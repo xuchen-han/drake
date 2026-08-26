@@ -6,6 +6,9 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
+
+#include <fmt/ranges.h>
 
 #include "drake/geometry/scene_graph_config.h"
 #include "drake/geometry/scene_graph_inspector.h"
@@ -87,6 +90,21 @@ void IcfBuilder<T>::UpdateModel(
     const IcfLinearFeedbackGains<T>* actuation_feedback,
     const IcfLinearFeedbackGains<T>* external_feedback, IcfModel<T>* model) {
   DRAKE_ASSERT(model != nullptr);
+  // Joint dry friction is a context parameter, so ValidatePlant() cannot check
+  // it.
+  std::vector<std::string> joints_with_dry_friction;
+  for (JointIndex joint_index : plant_.GetJointIndices()) {
+    const Joint<T>& joint = plant_.get_joint(joint_index);
+    if ((joint.GetDryFrictionVector(context).array() != 0.0).any()) {
+      joints_with_dry_friction.push_back(fmt::format("'{}'", joint.name()));
+    }
+  }
+  if (!joints_with_dry_friction.empty()) {
+    throw std::logic_error(fmt::format(
+        "The CENIC integrator does not yet support joint dry friction, but it "
+        "is specified for joints {} in the given MultibodyPlant.",
+        fmt::join(joints_with_dry_friction, ", ")));
+  }
   const SpanningForest& forest = GetInternalTree(plant_).forest();
   const int nv = forest.num_velocities();
 
