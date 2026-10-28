@@ -363,6 +363,7 @@ drake_cc_googletest(
         "//systems/controllers:pid_controller",
         "//systems/framework:diagram",
         "//systems/primitives:constant_vector_source",
+        "//systems/primitives:matrix_gain",
     ],
 )
 
