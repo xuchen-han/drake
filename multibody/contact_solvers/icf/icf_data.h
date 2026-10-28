@@ -9,6 +9,7 @@
 #include "drake/multibody/contact_solvers/icf/eigen_pool.h"
 #include "drake/multibody/contact_solvers/icf/gain_constraints_data_pool.h"
 #include "drake/multibody/contact_solvers/icf/holonomic_constraints_data_pool.h"
+#include "drake/multibody/contact_solvers/icf/joint_friction_constraints_data_pool.h"
 #include "drake/multibody/contact_solvers/icf/limit_constraints_data_pool.h"
 #include "drake/multibody/contact_solvers/icf/patch_constraints_data_pool.h"
 
@@ -29,6 +30,7 @@ struct ResizeParams {
   int num_couplers{};          // Number of coupler constraints.
   int num_distance_constraints{};  // Number of distance constraints.
   int num_welds{};                 // Number of weld constraints.
+  int num_joint_frictions{};       // Number of joint friction constraints.
   std::span<const int>
       gain_sizes;  // Number of velocities for each gain constraint.
   std::span<const int>
@@ -99,12 +101,14 @@ class IcfData {
     CouplerConstraintsDataPool<T> coupler_constraints_data;
     DistanceConstraintsDataPool<T> distance_constraints_data;
     GainConstraintsDataPool<T> gain_constraints_data;
+    JointFrictionConstraintsDataPool<T> joint_friction_constraints_data;
     LimitConstraintsDataPool<T> limit_constraints_data;
     PatchConstraintsDataPool<T> patch_constraints_data;
     WeldConstraintsDataPool<T> weld_constraints_data;
 
-    // Scratch space for coupler constraints Hessian accumulation. Holds at most
-    // one matrix of size max_clique_size() x max_clique_size().
+    // Scratch space for coupler and joint friction constraints Hessian
+    // accumulation. Holds at most one matrix of size max_clique_size() x
+    // max_clique_size().
     EigenPool<MatrixX<T>> H_cc_pool;
 
     // Scratch space for Hessian accumulation. These pools will only hold at
@@ -197,6 +201,16 @@ class IcfData {
     return gain_constraints_data_;
   }
 
+  /* Returns the data pool for joint dry friction constraints. */
+  const JointFrictionConstraintsDataPool<T>& joint_friction_constraints_data()
+      const {
+    return joint_friction_constraints_data_;
+  }
+  JointFrictionConstraintsDataPool<T>&
+  mutable_joint_friction_constraints_data() {
+    return joint_friction_constraints_data_;
+  }
+
   /* Returns the data pool for joint limit constraints. */
   const LimitConstraintsDataPool<T>& limit_constraints_data() const {
     return limit_constraints_data_;
@@ -238,6 +252,7 @@ class IcfData {
   CouplerConstraintsDataPool<T> coupler_constraints_data_;
   DistanceConstraintsDataPool<T> distance_constraints_data_;
   GainConstraintsDataPool<T> gain_constraints_data_;
+  JointFrictionConstraintsDataPool<T> joint_friction_constraints_data_;
   LimitConstraintsDataPool<T> limit_constraints_data_;
   PatchConstraintsDataPool<T> patch_constraints_data_;
   WeldConstraintsDataPool<T> weld_constraints_data_;

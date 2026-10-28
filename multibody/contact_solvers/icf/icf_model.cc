@@ -23,6 +23,7 @@ IcfModel<T>::IcfModel()
       coupler_constraints_pool_(this),
       distance_constraints_pool_(this),
       gain_constraints_pool_(this),
+      joint_friction_constraints_pool_(this),
       limit_constraints_pool_(this),
       patch_constraints_pool_(this),
       weld_constraints_pool_(this) {}
@@ -105,6 +106,8 @@ void IcfModel<T>::ResizeData(IcfData<T>* data) const {
        .num_couplers = coupler_constraints_pool_.num_constraints(),
        .num_distance_constraints = distance_constraints_pool_.num_constraints(),
        .num_welds = weld_constraints_pool_.num_constraints(),
+       .num_joint_frictions =
+           joint_friction_constraints_pool_.num_constraints(),
        .gain_sizes = gain_constraints_pool_.constraint_sizes(),
        .limit_sizes = limit_constraints_pool_.constraint_sizes(),
        .patch_sizes = patch_constraints_pool_.patch_sizes()});
@@ -129,6 +132,8 @@ void IcfModel<T>::CalcData(const VectorX<T>& v, IcfData<T>* data) const {
   distance_constraints_pool_.CalcData(
       V_WB, &data->mutable_distance_constraints_data());
   gain_constraints_pool_.CalcData(v, &data->mutable_gain_constraints_data());
+  joint_friction_constraints_pool_.CalcData(
+      v, &data->mutable_joint_friction_constraints_data());
   limit_constraints_pool_.CalcData(v, &data->mutable_limit_constraints_data());
   patch_constraints_pool_.CalcData(V_WB,
                                    &data->mutable_patch_constraints_data());
@@ -140,6 +145,7 @@ void IcfModel<T>::CalcData(const VectorX<T>& v, IcfData<T>* data) const {
   coupler_constraints_pool_.AccumulateGradient(*data, &gradient);
   distance_constraints_pool_.AccumulateGradient(*data, &gradient);
   gain_constraints_pool_.AccumulateGradient(*data, &gradient);
+  joint_friction_constraints_pool_.AccumulateGradient(*data, &gradient);
   limit_constraints_pool_.AccumulateGradient(*data, &gradient);
   patch_constraints_pool_.AccumulateGradient(*data, &gradient);
   weld_constraints_pool_.AccumulateGradient(*data, &gradient);
@@ -149,6 +155,7 @@ void IcfModel<T>::CalcData(const VectorX<T>& v, IcfData<T>* data) const {
                  data->coupler_constraints_data().cost() +
                  data->distance_constraints_data().cost() +
                  data->gain_constraints_data().cost() +
+                 data->joint_friction_constraints_data().cost() +
                  data->limit_constraints_data().cost() +
                  data->patch_constraints_data().cost() +
                  data->weld_constraints_data().cost());
@@ -178,6 +185,7 @@ void IcfModel<T>::UpdateHessian(const IcfData<T>& data,
   coupler_constraints_pool_.AccumulateHessian(data, hessian);
   distance_constraints_pool_.AccumulateHessian(data, hessian);
   gain_constraints_pool_.AccumulateHessian(data, hessian);
+  joint_friction_constraints_pool_.AccumulateHessian(data, hessian);
   limit_constraints_pool_.AccumulateHessian(data, hessian);
   patch_constraints_pool_.AccumulateHessian(data, hessian);
   weld_constraints_pool_.AccumulateHessian(data, hessian);
@@ -251,6 +259,21 @@ T IcfModel<T>::CalcCostAlongLine(
         &data.scratch().Gw_gain, &constraint_dcost, &constraint_d2cost);
 
     cost += data.scratch().gain_constraints_data.cost();
+    *dcost_dalpha += constraint_dcost;
+    *d2cost_dalpha2 += constraint_d2cost;
+  }
+
+  // Add joint friction constraints contributions:
+  {
+    T constraint_dcost, constraint_d2cost;
+
+    joint_friction_constraints_pool_.CalcData(
+        v_alpha, &data.scratch().joint_friction_constraints_data);
+    joint_friction_constraints_pool_.CalcCostAlongLine(
+        data.scratch().joint_friction_constraints_data, search_direction.w,
+        &constraint_dcost, &constraint_d2cost);
+
+    cost += data.scratch().joint_friction_constraints_data.cost();
     *dcost_dalpha += constraint_dcost;
     *d2cost_dalpha2 += constraint_d2cost;
   }
@@ -514,6 +537,8 @@ void IcfModel<T>::ReduceInto(IcfModel<T>* reduced_model,
       *mapping, &reduced_model->distance_constraints_pool());
   gain_constraints_pool().ReduceInto(*mapping,
                                      &reduced_model->gain_constraints_pool());
+  joint_friction_constraints_pool().ReduceInto(
+      *mapping, &reduced_model->joint_friction_constraints_pool());
   limit_constraints_pool().ReduceInto(*mapping,
                                       &reduced_model->limit_constraints_pool());
   patch_constraints_pool().ReduceInto(*mapping,
