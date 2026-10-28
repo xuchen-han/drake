@@ -16,6 +16,10 @@
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
+namespace icf {
+// Forward declaration.
+struct IcfSolverParameters;
+}  // namespace icf
 namespace internal {
 // Forward declaration.
 struct SapSolverParameters;
@@ -23,9 +27,10 @@ struct SapSolverParameters;
 }  // namespace contact_solvers
 namespace internal {
 
-// Forward declaration.
+// Forward declarations.
 template <typename>
 class SapDriver;
+class IcfDriver;
 
 // To compute accelerations due to non-constraint forces (i.e. forces excluding
 // contact and joint limit forces), we pack forces, ABA cache and accelerations
@@ -69,6 +74,8 @@ struct AccelerationsDueNonConstraintForcesCache {
 // @warning Scalar support on T = symbolic::Expression is only limited,
 // conditional to the solver in use:
 //   - For SAP. Discrete updates are not supported.
+//   - For ICF (see DiscreteContactSolver::kIcf), discrete updates are supported
+//     only for T = double.
 //
 // Even when limited support for discrete updates is provided for T =
 // symbolic::Expression, a MultibodyPlant can be scalar converted to symbolic in
@@ -92,6 +99,12 @@ class CompliantContactManager final : public DiscreteUpdateManager<T> {
   void set_sap_solver_parameters(
       const contact_solvers::internal::SapSolverParameters& parameters);
 
+  // Sets the parameters to be used by the ICF solver.
+  // @throws if the plant does not use DiscreteContactSolver::kIcf, or if T is
+  // not double.
+  void set_icf_solver_parameters(
+      const contact_solvers::icf::IcfSolverParameters& parameters);
+
   // @returns `true`.
   bool is_cloneable_to_double() const final;
 
@@ -106,6 +119,7 @@ class CompliantContactManager final : public DiscreteUpdateManager<T> {
   // with tighter functionality. For instance, a class that takes care of
   // getting proximity properties and creating DiscreteContactPairs.
   friend class SapDriver<T>;
+  friend class IcfDriver;
 
   // Struct used to conglomerate the indexes of cache entries declared by the
   // manager.
@@ -178,6 +192,12 @@ class CompliantContactManager final : public DiscreteUpdateManager<T> {
   std::conditional_t<std::is_same_v<T, symbolic::Expression>, void*,
                      std::unique_ptr<SapDriver<T>>>
       sap_driver_{};
+  // The ICF driver is only available for T = double. When the plant uses
+  // DiscreteContactSolver::kIcf and T is not double, both drivers are nullptr
+  // and discrete updates throw.
+  std::conditional_t<std::is_same_v<T, double>, std::unique_ptr<IcfDriver>,
+                     void*>
+      icf_driver_{};
 };
 
 }  // namespace internal

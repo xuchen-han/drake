@@ -1,4 +1,4 @@
-#include "drake/multibody/contact_solvers/icf/icf_external_systems_linearizer.h"
+#include "drake/multibody/plant/icf_external_systems_linearizer.h"
 
 #include <cmath>
 #include <memory>
@@ -353,7 +353,7 @@ TEST_F(IcfExternalSystemsLinearizerTest, DesiredStateInput) {
   // there's not much we can do here other than copy-paste the same formula as
   // is performed inside the implementation.
   Vector2d K_expected = Vector2d::Constant(Kp * h + Kd);
-  Vector2d b_expected = -Kp * (q0 - qd) - Kd * vd;
+  Vector2d b_expected = -Kp * (q0 - qd) + Kd * vd;
   EXPECT_TRUE(CompareMatrices(result.actuation_feedback->K, K_expected, 1e-8));
   EXPECT_TRUE(CompareMatrices(result.actuation_feedback->b, b_expected, 1e-8));
 

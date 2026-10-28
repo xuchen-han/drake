@@ -59,6 +59,28 @@ class IcfBuilder {
                    const IcfLinearFeedbackGains<T>* external_feedback,
                    IcfModel<T>* model);
 
+  /* (Experimental) Same as UpdateModel() above, but uses the given geometry
+  query results instead of a new query of the plant's geometry input port.
+  A caller that already has these results (e.g., the discrete update manager of
+  a discrete plant) can use this overload to do only one geometry query per
+  step.
+
+  Patch p < point_pairs.size() is the point contact point_pairs[p], with one
+  pair. Patch p = point_pairs.size() + s is the hydroelastic surface
+  surfaces[s], with one pair per face of the surface.
+
+  @param point_pairs Point contact results for the configuration in `context`.
+  @param surfaces Hydroelastic contact results for the configuration in
+         `context`.
+  @pre `point_pairs` and `surfaces` were computed with the plant's contact model
+       for the configuration stored in `context`. */
+  void UpdateModel(
+      const systems::Context<T>& context, const T& time_step,
+      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs,
+      const std::vector<geometry::ContactSurface<T>>& surfaces,
+      const IcfLinearFeedbackGains<T>* actuation_feedback,
+      const IcfLinearFeedbackGains<T>* external_feedback, IcfModel<T>* model);
+
   /* Updates only the feedback gains. All other model data remains unchanged.
   @pre The existence (i.e., nullness) of the two feedbacks values must match the
   existence of the most recent prior call to UpdateModel(). */
@@ -90,22 +112,37 @@ class IcfBuilder {
   /* Throws if the plant provided at construction is not compatible with ICF. */
   void ValidatePlant();
 
+  /* Implements both UpdateModel() overloads. When `point_pairs` and `surfaces`
+  are nullptr, this does a new geometry query. */
+  void UpdateModelImpl(
+      const systems::Context<T>& context, const T& time_step,
+      const std::vector<geometry::PenetrationAsPointPair<T>>* point_pairs,
+      const std::vector<geometry::ContactSurface<T>>* surfaces,
+      const IcfLinearFeedbackGains<T>* actuation_feedback,
+      const IcfLinearFeedbackGains<T>* external_feedback, IcfModel<T>* model);
+
   /* Computes geometry data and stores it internally for later use. */
   void CalcGeometryContactData(const systems::Context<T>& context);
 
-  /* Allocates space for both point and hydroelastic contact constraints.
-  @pre Geometry contact data has already been computed */
-  void AllocatePatchConstraints(IcfModel<T>* model) const;
+  /* Allocates space for both point and hydroelastic contact constraints. */
+  void AllocatePatchConstraints(
+      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs,
+      const std::vector<geometry::ContactSurface<T>>& surfaces,
+      IcfModel<T>* model) const;
 
   /* Sets point contact constraints in the model
   @pre AllocatePatchConstraints() has already been called. */
-  void SetPatchConstraintsForPointContact(const systems::Context<T>& context,
-                                          IcfModel<T>* model) const;
+  void SetPatchConstraintsForPointContact(
+      const systems::Context<T>& context,
+      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs,
+      IcfModel<T>* model) const;
 
   /* Sets hydroelastic contact constraints in the model
   @pre AllocatePatchConstraints() has already been called. */
   void SetPatchConstraintsForHydroelasticContact(
-      const systems::Context<T>& context, IcfModel<T>* model) const;
+      const systems::Context<T>& context, int num_point_pairs,
+      const std::vector<geometry::ContactSurface<T>>& surfaces,
+      IcfModel<T>* model) const;
 
   /* Computes the surface-velocity bias v_b_W (world frame) at a contact point
   between bodyA and bodyB, following the sign convention v_b = v_B_ss - v_A_ss

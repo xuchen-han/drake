@@ -99,7 +99,42 @@ class IcfExternalSystemsLinearizer {
       IcfLinearFeedbackGains<T>* actuation_feedback,
       IcfLinearFeedbackGains<T>* external_feedback) const;
 
+  /* (Experimental) Computes the feedback gains for a discrete-time plant, which
+  holds its inputs constant during a step. Unlike LinearizeExternalSystem(),
+  this function does not use finite differences and does not change the
+  context. The actuation and external forces are evaluated at x₀:
+    Kᵤ = 0, bᵤ = B⋅u(x₀),
+    Kₑ = 0, bₑ = τₑ(x₀).
+  The terms of the plant's PD controllers (see AddDesiredStateTerms()) are added
+  to Kᵤ and bᵤ.
+
+  The parameters and the return value have the same meaning as for
+  LinearizeExternalSystem(). */
+  std::tuple<bool, bool> CalcExplicitFeedbackGains(
+      const T& h, const systems::Context<T>& plant_context,
+      IcfLinearFeedbackGains<T>* actuation_feedback,
+      IcfLinearFeedbackGains<T>* external_feedback) const;
+
  private:
+  /* Flags that tell which plant inputs have a value. */
+  struct ConnectedInputs {
+    bool actuation{false};
+    bool desired_state{false};
+    bool external_forces{false};
+  };
+
+  /* Finds which plant inputs have a value in `plant_context`. */
+  ConnectedInputs FindConnectedInputs(
+      const systems::Context<T>& plant_context) const;
+
+  /* Adds the terms of the plant's PD controllers to the actuation gains. For
+  q = q₀ + h⋅v, the PD force is linear in v:
+    −Kp⋅(q − qd) − Kd⋅(v − vd) = −(h⋅Kp + Kd)⋅v + (−Kp⋅(q₀ − qd) + Kd⋅vd),
+  thus Kᵤ += h⋅Kp + Kd and bᵤ += −Kp⋅(q₀ − qd) + Kd⋅vd. */
+  void AddDesiredStateTerms(const T& h,
+                            const systems::Context<T>& plant_context,
+                            VectorX<T>* Ku, VectorX<T>* bu) const;
+
   /* Pre-allocated scratch space. */
   struct Scratch {
     /* Sizes the member fields to accommodate the given plant. */

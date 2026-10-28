@@ -34,6 +34,9 @@
 // #include "drake/multibody/plant/geometry_contact_data.h"
 // #include "drake/multibody/plant/hydroelastic_contact_forces_continuous_cache_data.h"
 // #include "drake/multibody/plant/hydroelastic_contact_info.h"
+// #include "drake/multibody/plant/icf_builder.h"
+// #include "drake/multibody/plant/icf_driver.h"
+// #include "drake/multibody/plant/icf_external_systems_linearizer.h"
 // #include "drake/multibody/plant/internal_geometry_names.h"
 // #include "drake/multibody/plant/make_discrete_update_manager.h"
 // #include "drake/multibody/plant/multibody_plant.h"
@@ -1417,7 +1420,22 @@ References
   https://arxiv.org/abs/1909.05700.
 - [Castro et al., 2022] Castro A., Permenter F. and Han X., 2022. An
   Unconstrained Convex Formulation of Compliant Contact. Available online at
-  https://arxiv.org/abs/2110.10107.)""";
+  https://arxiv.org/abs/2110.10107.
+- [Castro et al., 2023] Castro A., Han X., and Masterjohn J., 2023. A Theory
+  of Irrotational Contact Fields. Available online at
+  https://arxiv.org/abs/2312.03908)""";
+        // Symbol: drake::multibody::DiscreteContactSolver::kIcf
+        struct /* kIcf */ {
+          // Source: drake/multibody/plant/multibody_plant.h
+          const char* doc =
+R"""((Experimental) The convex solver of Irrotational Contact Fields (ICF),
+see [Castro et al., 2023]. This is the solver that CenicIntegrator
+uses. In a discrete MultibodyPlant, it gives the "lagged" ICF model of
+[Castro et al., 2023]: a step of this solver is the same as a step of
+CenicIntegrator with error control turned off, but the plant inputs
+are held constant during the step. Only T = double is supported.
+Deformable bodies and tendon constraints are not supported.)""";
+        } kIcf;
         // Symbol: drake::multibody::DiscreteContactSolver::kSap
         struct /* kSap */ {
           // Source: drake/multibody/plant/multibody_plant.h
@@ -8473,6 +8491,24 @@ Raises:
 Raises:
     RuntimeError iff called post-finalize.)""";
         } set_discrete_contact_approximation;
+        // Symbol: drake::multibody::MultibodyPlant::set_discrete_contact_solver
+        struct /* set_discrete_contact_solver */ {
+          // Source: drake/multibody/plant/multibody_plant.h
+          const char* doc =
+R"""((Experimental) Sets the contact solver type used for discrete
+MultibodyPlant models. The default is DiscreteContactSolver∷kSap.
+
+With DiscreteContactSolver∷kIcf, the plant ignores the discrete
+contact approximation (see set_discrete_contact_approximation()) and
+the SAP near rigid threshold (see set_sap_near_rigid_threshold()).
+
+Raises:
+    iff ``this`` plant is continuous (i.e. is_discrete() is
+    ``False``.)
+
+Raises:
+    RuntimeError iff called post-finalize.)""";
+        } set_discrete_contact_solver;
         // Symbol: drake::multibody::MultibodyPlant::set_gravity_enabled
         struct /* set_gravity_enabled */ {
           // Source: drake/multibody/plant/multibody_plant.h

@@ -369,6 +369,42 @@ void PatchConstraintsPool<T>::CalcData(
 }
 
 template <typename T>
+void PatchConstraintsPool<T>::CalcContactPairImpulses(
+    const PatchConstraintsDataPool<T>& patch_data,
+    EigenPool<Vector3<T>>* gamma_Bc_W_pool) const {
+  DRAKE_ASSERT(gamma_Bc_W_pool != nullptr);
+  const EigenPool<Vector3<T>>& v_AcBc_W_pool = patch_data.v_AcBc_W_pool();
+  gamma_Bc_W_pool->Resize(total_num_pairs(), 3, 1);
+  Matrix3<T> G_unused;
+  for (int p = 0; p < num_patches(); ++p) {
+    for (int k = 0; k < num_pairs_[p]; ++k) {
+      const int pk = patch_pair_index(p, k);
+      Vector3<T> gamma_Bc_W;
+      CalcLaggedHuntCrossleyModel(p, k, v_AcBc_W_pool[pk], &gamma_Bc_W,
+                                  &G_unused);
+      (*gamma_Bc_W_pool)[pk] = gamma_Bc_W;
+    }
+  }
+}
+
+template <typename T>
+void PatchConstraintsPool<T>::AccumulateBodySpatialImpulses(
+    const PatchConstraintsDataPool<T>& patch_data,
+    std::vector<Vector6<T>>* Gamma_Bo_W) const {
+  DRAKE_ASSERT(Gamma_Bo_W != nullptr);
+  DRAKE_ASSERT(ssize(*Gamma_Bo_W) == model().num_bodies());
+  const EigenPool<Vector6<T>>& Gamma_Bo_W_pool = patch_data.Gamma_Bo_W_pool();
+  for (int p = 0; p < num_patches(); ++p) {
+    const int body_b = bodies_[p].first;
+    const int body_a = bodies_[p].second;
+    const Vector6<T>& Gamma_Bo_W_p = Gamma_Bo_W_pool[p];
+    (*Gamma_Bo_W)[body_b] += Gamma_Bo_W_p;
+    // The impulse on A is the opposite of the impulse on B, shifted to Ao.
+    (*Gamma_Bo_W)[body_a] -= ShiftSpatialForce(Gamma_Bo_W_p, p_AB_W_[p]);
+  }
+}
+
+template <typename T>
 void PatchConstraintsPool<T>::AccumulateGradient(const IcfData<T>& data,
                                                  VectorX<T>* gradient) const {
   DRAKE_ASSERT(gradient != nullptr);

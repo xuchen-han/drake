@@ -1256,6 +1256,8 @@ void DoScalarDependentDefinitions(py::module_ m, T) {
             cls_doc.get_contact_model.doc)
         .def("get_discrete_contact_solver", &Class::get_discrete_contact_solver,
             cls_doc.get_discrete_contact_solver.doc)
+        .def("set_discrete_contact_solver", &Class::set_discrete_contact_solver,
+            py::arg("solver"), cls_doc.set_discrete_contact_solver.doc)
         .def("set_discrete_contact_approximation",
             &Class::set_discrete_contact_approximation,
             py::arg("approximation"),
@@ -1756,7 +1758,8 @@ PYDRAKE_MODULE(plant, m) {
     using Class = DiscreteContactSolver;
     constexpr auto& cls_doc = doc.DiscreteContactSolver;
     py::enum_<Class>(m, "DiscreteContactSolver", cls_doc.doc)
-        .value("kSap", Class::kSap, cls_doc.kSap.doc);
+        .value("kSap", Class::kSap, cls_doc.kSap.doc)
+        .value("kIcf", Class::kIcf, cls_doc.kIcf.doc);
   }
 
   {

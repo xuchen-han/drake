@@ -176,6 +176,25 @@ class PatchConstraintsPool {
                          EigenPool<Vector6<T>>* U_AbB_W_pool, T* dcost,
                          T* d2cost) const;
 
+  /* Computes the contact impulse on body B at each contact pair. These are the
+  impulses that CalcData() sums into one spatial impulse per patch.
+  @param patch_data The patch data computed with CalcData().
+  @param[out] gamma_Bc_W_pool The impulse γ_Bc_W on body B at the contact point
+              C of each pair, expressed in the world frame, indexed by
+              patch_pair_index(). It is resized as needed. */
+  void CalcContactPairImpulses(const PatchConstraintsDataPool<T>& patch_data,
+                               EigenPool<Vector3<T>>* gamma_Bc_W_pool) const;
+
+  /* Adds the spatial impulse of each patch to its two bodies.
+  @param patch_data The patch data computed with CalcData().
+  @param[in,out] Gamma_Bo_W The spatial impulse on each body B at its origin Bo,
+                 expressed in the world frame, indexed by body. Impulses on
+                 anchored bodies are added also.
+  @pre Gamma_Bo_W->size() == model().num_bodies(). */
+  void AccumulateBodySpatialImpulses(
+      const PatchConstraintsDataPool<T>& patch_data,
+      std::vector<Vector6<T>>* Gamma_Bo_W) const;
+
   /* Testing only access to pool-wide data. */
   double stiction_tolerance() const { return stiction_tolerance_; }
 

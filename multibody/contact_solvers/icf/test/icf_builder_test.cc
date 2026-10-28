@@ -1,4 +1,4 @@
-#include "drake/multibody/contact_solvers/icf/icf_builder.h"
+#include "drake/multibody/plant/icf_builder.h"
 
 #include <limits>
 #include <memory>

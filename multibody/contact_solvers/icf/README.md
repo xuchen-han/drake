@@ -75,7 +75,10 @@ Key components and how they talk to each other:
      Newton iterations.
    - TODO(#23769): `IcfBuilder`: Constructs the optimization problem. The
      builder (along with the related `IcfExternalSystemsLinearizer`) are the
-     only components that know about `MultibodyPlant`.
+     only components that know about `MultibodyPlant`. They are in
+     `multibody/plant`, together with the (experimental) `IcfDriver`, which uses
+     ICF for the discrete updates of a discrete `MultibodyPlant` (see
+     `DiscreteContactSolver::kIcf`).
 
 Other components:
 
