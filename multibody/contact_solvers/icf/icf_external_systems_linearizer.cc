@@ -311,8 +311,16 @@ void IcfExternalSystemsLinearizer<T>::CalcExternalForces(
   using Attorney = multibody::internal::MultibodyPlantIcfAttorney<T>;
   MultibodyForces<T>& forces = scratch_.f_ext;
   forces.SetZero();
-  Attorney::AddAppliedExternalSpatialForces(plant_, context, &forces);
   Attorney::AddAppliedExternalGeneralizedForces(plant_, context, &forces);
+  if (!plant_.get_applied_spatial_force_input_port().HasValue(context)) {
+    // Without spatial forces, τₑ is equal to the applied generalized forces.
+    // Then we do not call CalcGeneralizedForces(), because its inverse
+    // dynamics pass is expensive and the linearizer calls this function one
+    // time for each velocity.
+    *tau = forces.generalized_forces();
+    return;
+  }
+  Attorney::AddAppliedExternalSpatialForces(plant_, context, &forces);
   plant_.CalcGeneralizedForces(context, forces, tau);
 }
 

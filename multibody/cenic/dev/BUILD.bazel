@@ -4,6 +4,7 @@ drake_cc_binary(
     name = "cenic_linearizer_bench",
     srcs = ["cenic_linearizer_bench.cc"],
     deps = [
+        "//geometry:shape_specification",
         "//multibody/cenic:cenic_integrator",
         "//multibody/contact_solvers/icf:icf_external_systems_linearizer",
         "//multibody/plant",
