@@ -791,11 +791,12 @@ class Joint : public MultibodyElement<T> {
   /// is a torque in N⋅m the bound is in N⋅m, and for a prismatic joint the
   /// bound is in N. Refer to each joint's documentation for further details.
   ///
-  /// @note Only discrete MultibodyPlant models support dry friction, and only
-  /// on joints with a single degree of freedom. Setting a non-zero dry friction
-  /// on a joint with more than one degree of freedom throws. A continuous
-  /// model throws when it evaluates its dynamics with a non-zero dry friction
-  /// on any joint, also with the "cenic" integration scheme.
+  /// @note Only discrete MultibodyPlant models and continuous models simulated
+  /// with the "cenic" integration scheme support dry friction, and only on
+  /// joints with a single degree of freedom. Setting a non-zero dry friction
+  /// on a joint with more than one degree of freedom throws. With any other
+  /// integration scheme, a continuous model throws when it evaluates its
+  /// dynamics with a non-zero dry friction on any joint.
   const VectorX<double>& default_dry_friction_vector() const {
     return dry_friction_;
   }

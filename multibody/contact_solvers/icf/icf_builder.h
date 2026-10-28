@@ -45,8 +45,10 @@ class IcfBuilder {
   @param external_feedback linearization data (Kₑ, bₑ) for external
          forces τₑ = -Kₑ⋅v + bₑ. May be nullptr.
   @param model The IcfModel to update.
-  @throws std::exception if any joint has a non-zero dry friction in
-          `context`, which this builder does not yet support.
+  @throws std::exception if a joint has a negative or NaN dry friction in
+          `context`, or a non-zero dry friction on more than one degree of
+          freedom. The Joint setters reject these values, so this is only
+          possible for a parameter written by other means.
 
   Note that the presence/absence of actuation_feedback and external_feedback
   affects the allocation of gain constraints. In particular, passing nullptr to
@@ -147,6 +149,17 @@ class IcfBuilder {
   @pre AllocateLimitConstraints() has already been called. */
   void SetLimitConstraints(const systems::Context<T>& context,
                            IcfModel<T>* model) const;
+
+  /* Resizes the model to accommodate one joint friction constraint for each
+  joint with a non-zero dry friction in `context`.
+  @throws std::exception for an invalid dry friction, see UpdateModel(). */
+  void AllocateJointFrictionConstraints(const systems::Context<T>& context,
+                                        IcfModel<T>* model) const;
+
+  /* Sets joint dry friction constraints in the model.
+  @pre AllocateJointFrictionConstraints() has already been called. */
+  void SetJointFrictionConstraints(const systems::Context<T>& context,
+                                   IcfModel<T>* model) const;
 
   /* Resizes the model to accommodate gain constraints. We assume that external
   force constraints come first, followed by actuator constraints. */

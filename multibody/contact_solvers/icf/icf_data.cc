@@ -23,6 +23,7 @@ void IcfData<T>::Scratch::Resize(const ResizeParams& params) {
   coupler_constraints_data.Resize(params.num_couplers);
   distance_constraints_data.Resize(params.num_distance_constraints);
   gain_constraints_data.Resize(params.gain_sizes);
+  joint_friction_constraints_data.Resize(params.num_joint_frictions);
   limit_constraints_data.Resize(params.limit_sizes);
   patch_constraints_data.Resize(params.patch_sizes);
   weld_constraints_data.Resize(params.num_welds);
@@ -50,6 +51,7 @@ void IcfData<T>::Resize(const ResizeParams& params) {
   coupler_constraints_data_.Resize(params.num_couplers);
   distance_constraints_data_.Resize(params.num_distance_constraints);
   gain_constraints_data_.Resize(params.gain_sizes);
+  joint_friction_constraints_data_.Resize(params.num_joint_frictions);
   limit_constraints_data_.Resize(params.limit_sizes);
   patch_constraints_data_.Resize(params.patch_sizes);
   weld_constraints_data_.Resize(params.num_welds);

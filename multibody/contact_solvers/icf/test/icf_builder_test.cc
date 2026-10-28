@@ -734,9 +734,53 @@ GTEST_TEST(IcfBuilder, TendonConstraintUnsupported) {
                               ".*not.*support.*1 tendon constraint\\(s\\).*");
 }
 
-// Joint dry friction is a context parameter, so the builder checks it when it
+// Joint dry friction is a context parameter, so the builder adds one constraint
+// for each joint with a non-zero dry friction in the context each time it
 // updates the model.
-GTEST_TEST(IcfBuilder, JointDryFrictionUnsupported) {
+GTEST_TEST(IcfBuilder, JointDryFriction) {
+  systems::DiagramBuilder<double> diagram_builder;
+  multibody::MultibodyPlantConfig plant_config{.time_step = 0.0};
+  MultibodyPlant<double>& plant =
+      multibody::AddMultibodyPlant(plant_config, &diagram_builder);
+  const ModelInstanceIndex pendulum1 =
+      Parser(&plant, "Pendulum1").AddModelsFromString(kRobotXml, "xml").at(0);
+  const ModelInstanceIndex pendulum2 =
+      Parser(&plant, "Pendulum2").AddModelsFromString(kRobotXml, "xml").at(0);
+  plant.GetMutableJointByName<RevoluteJoint>("joint2", pendulum1)
+      .set_default_dry_friction(0.5);
+  plant.Finalize();
+
+  auto diagram = diagram_builder.Build();
+  auto diagram_context = diagram->CreateDefaultContext();
+  systems::Context<double>& plant_context =
+      plant.GetMyMutableContextFromRoot(diagram_context.get());
+  plant.GetJointByName<RevoluteJoint>("joint1", pendulum2)
+      .SetDryFriction(&plant_context, 0.7);
+
+  IcfBuilder<double> builder(&plant);
+  IcfModel<double> model;
+  builder.UpdateModel(plant_context, 0.01, nullptr, nullptr, &model);
+  ASSERT_EQ(model.num_cliques(), 2);
+  EXPECT_EQ(model.num_joint_friction_constraints(), 2);
+  const JointFrictionConstraintsPool<double>& pool =
+      model.joint_friction_constraints_pool();
+  EXPECT_EQ(pool.clique(), std::vector<int>({0, 1}));
+  EXPECT_EQ(pool.dof(), std::vector<int>({1, 0}));
+  EXPECT_EQ(pool.friction(), std::vector<double>({0.5, 0.7}));
+
+  // A zero dry friction in the context removes the constraint.
+  plant.GetJointByName<RevoluteJoint>("joint2", pendulum1)
+      .SetDryFriction(&plant_context, 0.0);
+  builder.UpdateModel(plant_context, 0.01, nullptr, nullptr, &model);
+  EXPECT_EQ(model.num_joint_friction_constraints(), 1);
+  EXPECT_EQ(pool.clique(), std::vector<int>({1}));
+  EXPECT_EQ(pool.dof(), std::vector<int>({0}));
+  EXPECT_EQ(pool.friction(), std::vector<double>({0.7}));
+}
+
+// The builder also adds friction constraints for locked joints. The reduced
+// model removes them with the locked DoFs.
+GTEST_TEST(IcfBuilder, JointDryFrictionWithJointLocking) {
   systems::DiagramBuilder<double> diagram_builder;
   multibody::MultibodyPlantConfig plant_config{.time_step = 0.0};
   MultibodyPlant<double>& plant =
@@ -748,14 +792,116 @@ GTEST_TEST(IcfBuilder, JointDryFrictionUnsupported) {
   auto diagram_context = diagram->CreateDefaultContext();
   systems::Context<double>& plant_context =
       plant.GetMyMutableContextFromRoot(diagram_context.get());
-  plant.GetJointByName("joint2").SetDryFrictionVector(&plant_context,
-                                                      Vector1d(0.5));
+  const auto& joint1 = plant.GetJointByName<RevoluteJoint>("joint1");
+  const auto& joint2 = plant.GetJointByName<RevoluteJoint>("joint2");
+  joint1.SetDryFriction(&plant_context, 0.3);
+  joint2.SetDryFriction(&plant_context, 0.4);
+  joint1.Lock(&plant_context);
+
+  IcfBuilder<double> builder(&plant);
+  IcfModel<double> model;
+  builder.UpdateModel(plant_context, 0.01, nullptr, nullptr, &model);
+  EXPECT_EQ(model.num_joint_friction_constraints(), 2);
+  ASSERT_TRUE(model.is_reducible());
+
+  IcfModel<double> reduced_model;
+  ReducedMapping mapping;
+  model.ReduceInto(&reduced_model, &mapping);
+  ASSERT_EQ(reduced_model.num_velocities(), 1);
+  const JointFrictionConstraintsPool<double>& reduced_pool =
+      reduced_model.joint_friction_constraints_pool();
+  EXPECT_EQ(reduced_pool.clique(), std::vector<int>({0}));
+  EXPECT_EQ(reduced_pool.dof(), std::vector<int>({0}));
+  EXPECT_EQ(reduced_pool.friction(), std::vector<double>({0.4}));
+}
+
+// The friction constraints use the time step of the model, so a model built
+// for one time step and updated to another one with IcfModel::UpdateTimeStep()
+// (e.g., to retry a step) matches a model built for the second time step.
+GTEST_TEST(IcfBuilder, JointDryFrictionRetryStep) {
+  systems::DiagramBuilder<double> diagram_builder;
+  multibody::MultibodyPlantConfig plant_config{.time_step = 0.0};
+  MultibodyPlant<double>& plant =
+      multibody::AddMultibodyPlant(plant_config, &diagram_builder);
+  Parser(&plant, "Pendulum").AddModelsFromString(kRobotXml, "xml");
+  plant.Finalize();
+
+  auto diagram = diagram_builder.Build();
+  auto diagram_context = diagram->CreateDefaultContext();
+  systems::Context<double>& plant_context =
+      plant.GetMyMutableContextFromRoot(diagram_context.get());
+  plant.GetJointByName<RevoluteJoint>("joint1").SetDryFriction(&plant_context,
+                                                               0.3);
+  plant.GetJointByName<RevoluteJoint>("joint2").SetDryFriction(&plant_context,
+                                                               0.4);
+
+  const double time_step = 0.01;
+  IcfBuilder<double> builder(&plant);
+  IcfModel<double> model;
+  // Velocities such that joint1 sticks and joint2 slides at both time steps.
+  const Vector2d v(1.0e-6, 0.1);
+
+  builder.UpdateModel(plant_context, 2 * time_step, nullptr, nullptr, &model);
+  model.UpdateTimeStep(time_step);
+  IcfData<double> data1;
+  model.ResizeData(&data1);
+  model.CalcData(v, &data1);
+
+  builder.UpdateModel(plant_context, time_step, nullptr, nullptr, &model);
+  IcfData<double> data2;
+  model.ResizeData(&data2);
+  model.CalcData(v, &data2);
+
+  const JointFrictionConstraintsDataPool<double>& friction_data1 =
+      data1.joint_friction_constraints_data();
+  const JointFrictionConstraintsDataPool<double>& friction_data2 =
+      data2.joint_friction_constraints_data();
+  ASSERT_EQ(friction_data2.num_constraints(), 2);
+  // joint1 sticks and joint2 slides with friction at its bound.
+  EXPECT_GT(friction_data2.G(0), 0.0);
+  EXPECT_EQ(friction_data2.G(1), 0.0);
+  EXPECT_EQ(friction_data2.gamma(1), -time_step * 0.4);
+  for (int k = 0; k < 2; ++k) {
+    EXPECT_EQ(friction_data1.gamma(k), friction_data2.gamma(k));
+    EXPECT_EQ(friction_data1.G(k), friction_data2.G(k));
+  }
+  EXPECT_EQ(friction_data1.cost(), friction_data2.cost());
+  EXPECT_EQ(data1.cost(), data2.cost());
+  EXPECT_EQ(data1.gradient(), data2.gradient());
+}
+
+// The Joint setters reject an invalid dry friction. Verify that the builder
+// throws when the parameter holds such a value because it was written by other
+// means.
+GTEST_TEST(IcfBuilder, JointDryFrictionInvalid) {
+  systems::DiagramBuilder<double> diagram_builder;
+  multibody::MultibodyPlantConfig plant_config{.time_step = 0.0};
+  MultibodyPlant<double>& plant =
+      multibody::AddMultibodyPlant(plant_config, &diagram_builder);
+  Parser(&plant, "Pendulum").AddModelsFromString(kRobotXml, "xml");
+  plant.Finalize();
+
+  auto diagram = diagram_builder.Build();
+  auto diagram_context = diagram->CreateDefaultContext();
+  systems::Context<double>& plant_context =
+      plant.GetMyMutableContextFromRoot(diagram_context.get());
+  const Joint<double>& joint2 = plant.GetJointByName("joint2");
+  const VectorX<double>* storage = &joint2.GetDryFrictionVector(plant_context);
+  bool written = false;
+  for (int i = 0; i < plant_context.num_numeric_parameter_groups(); ++i) {
+    if (&plant_context.get_numeric_parameter(i).value() == storage) {
+      plant_context.get_mutable_numeric_parameter(i).SetFromVector(
+          Vector1d(-1.0));
+      written = true;
+    }
+  }
+  ASSERT_TRUE(written);
 
   IcfBuilder<double> builder(&plant);
   IcfModel<double> model;
   DRAKE_EXPECT_THROWS_MESSAGE(
       builder.UpdateModel(plant_context, 0.01, nullptr, nullptr, &model),
-      ".*not.*support joint dry friction.*'joint2'.*");
+      "Joint 'joint2' has an invalid dry friction.*");
 }
 
 GTEST_TEST(IcfBuilder, DeformableUnsupported) {

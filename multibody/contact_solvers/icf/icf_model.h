@@ -17,6 +17,7 @@
 #include "drake/multibody/contact_solvers/icf/icf_data.h"
 #include "drake/multibody/contact_solvers/icf/icf_hessian.h"
 #include "drake/multibody/contact_solvers/icf/icf_search_direction_data.h"
+#include "drake/multibody/contact_solvers/icf/joint_friction_constraints_pool.h"
 #include "drake/multibody/contact_solvers/icf/limit_constraints_pool.h"
 #include "drake/multibody/contact_solvers/icf/patch_constraints_pool.h"
 #include "drake/multibody/contact_solvers/icf/reduced_mapping.h"
@@ -166,8 +167,8 @@ class IcfModel {
   int num_constraints() const {
     return num_ball_constraints() + num_coupler_constraints() +
            num_distance_constraints() + num_gain_constraints() +
-           num_limit_constraints() + num_patch_constraints() +
-           num_weld_constraints();
+           num_joint_friction_constraints() + num_limit_constraints() +
+           num_patch_constraints() + num_weld_constraints();
   }
 
   /* Provides const access to the pool of all ball constraints. */
@@ -210,6 +211,19 @@ class IcfModel {
   constraints. */
   GainConstraintsPool<T>& gain_constraints_pool() {
     return gain_constraints_pool_;
+  }
+
+  /* Provides const access to the pool of all joint dry friction constraints.
+   */
+  const JointFrictionConstraintsPool<T>& joint_friction_constraints_pool()
+      const {
+    return joint_friction_constraints_pool_;
+  }
+
+  /* Provides mutable access to the pool of all joint dry friction constraints.
+   */
+  JointFrictionConstraintsPool<T>& joint_friction_constraints_pool() {
+    return joint_friction_constraints_pool_;
   }
 
   /* Provides const access to the pool of all joint limit constraints. */
@@ -256,6 +270,10 @@ class IcfModel {
 
   int num_gain_constraints() const {
     return gain_constraints_pool_.num_constraints();
+  }
+
+  int num_joint_friction_constraints() const {
+    return joint_friction_constraints_pool_.num_constraints();
   }
 
   int num_limit_constraints() const {
@@ -523,6 +541,7 @@ class IcfModel {
   CouplerConstraintsPool<T> coupler_constraints_pool_;
   DistanceConstraintsPool<T> distance_constraints_pool_;
   GainConstraintsPool<T> gain_constraints_pool_;
+  JointFrictionConstraintsPool<T> joint_friction_constraints_pool_;
   LimitConstraintsPool<T> limit_constraints_pool_;
   PatchConstraintsPool<T> patch_constraints_pool_;
   WeldConstraintsPool<T> weld_constraints_pool_;

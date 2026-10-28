@@ -32,6 +32,8 @@
 // #include "drake/multibody/contact_solvers/icf/icf_search_direction_data.h"
 // #include "drake/multibody/contact_solvers/icf/icf_solver.h"
 // #include "drake/multibody/contact_solvers/icf/icf_solver_parameters.h"
+// #include "drake/multibody/contact_solvers/icf/joint_friction_constraints_data_pool.h"
+// #include "drake/multibody/contact_solvers/icf/joint_friction_constraints_pool.h"
 // #include "drake/multibody/contact_solvers/icf/limit_constraints_data_pool.h"
 // #include "drake/multibody/contact_solvers/icf/limit_constraints_pool.h"
 // #include "drake/multibody/contact_solvers/icf/patch_constraints_data_pool.h"

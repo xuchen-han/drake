@@ -6,9 +6,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
-
-#include <fmt/ranges.h>
 
 #include "drake/geometry/scene_graph_config.h"
 #include "drake/geometry/scene_graph_inspector.h"
@@ -90,21 +87,6 @@ void IcfBuilder<T>::UpdateModel(
     const IcfLinearFeedbackGains<T>* actuation_feedback,
     const IcfLinearFeedbackGains<T>* external_feedback, IcfModel<T>* model) {
   DRAKE_ASSERT(model != nullptr);
-  // Joint dry friction is a context parameter, so ValidatePlant() cannot check
-  // it.
-  std::vector<std::string> joints_with_dry_friction;
-  for (JointIndex joint_index : plant_.GetJointIndices()) {
-    const Joint<T>& joint = plant_.get_joint(joint_index);
-    if ((joint.GetDryFrictionVector(context).array() != 0.0).any()) {
-      joints_with_dry_friction.push_back(fmt::format("'{}'", joint.name()));
-    }
-  }
-  if (!joints_with_dry_friction.empty()) {
-    throw std::logic_error(fmt::format(
-        "The CENIC integrator does not yet support joint dry friction, but it "
-        "is specified for joints {} in the given MultibodyPlant.",
-        fmt::join(joints_with_dry_friction, ", ")));
-  }
   const SpanningForest& forest = GetInternalTree(plant_).forest();
   const int nv = forest.num_velocities();
 
@@ -276,6 +258,10 @@ void IcfBuilder<T>::UpdateModel(
   // Limit constraints
   AllocateLimitConstraints(model);
   SetLimitConstraints(context, model);
+
+  // Joint friction constraints
+  AllocateJointFrictionConstraints(context, model);
+  SetJointFrictionConstraints(context, model);
 
   // Gain and external force constraints
   // N.B. external forces must come first, followed by actuation
@@ -740,6 +726,62 @@ void IcfBuilder<T>::SetLimitConstraints(const systems::Context<T>& context,
       }
     }
   }
+}
+
+template <typename T>
+void IcfBuilder<T>::AllocateJointFrictionConstraints(
+    const systems::Context<T>& context, IcfModel<T>* model) const {
+  DRAKE_ASSERT(model != nullptr);
+
+  // Joint dry friction is a context parameter, so the number of constraints can
+  // change between calls.
+  int num_constraints = 0;
+  for (JointIndex joint_index : plant_.GetJointIndices()) {
+    const Joint<T>& joint = plant_.get_joint(joint_index);
+    const VectorX<T>& dry_friction = joint.GetDryFrictionVector(context);
+    if ((dry_friction.array() == 0.0).all()) continue;
+
+    // Joint::SetDryFrictionVector() rejects these values, but a parameter
+    // written by other means can still hold them.
+    if (joint.num_velocities() != 1 || !(dry_friction(0) > 0.0)) {
+      throw std::logic_error(fmt::format(
+          "Joint '{}' has an invalid dry friction. Dry friction must be "
+          "non-negative, and non-zero only for joints with one degree of "
+          "freedom. See Joint::SetDryFrictionVector().",
+          joint.name()));
+    }
+    ++num_constraints;
+  }
+
+  model->joint_friction_constraints_pool().Resize(num_constraints);
+}
+
+template <typename T>
+void IcfBuilder<T>::SetJointFrictionConstraints(
+    const systems::Context<T>& context, IcfModel<T>* model) const {
+  DRAKE_ASSERT(model != nullptr);
+
+  const SpanningForest& forest = GetInternalTree(plant_).forest();
+  JointFrictionConstraintsPool<T>& frictions =
+      model->joint_friction_constraints_pool();
+
+  // We add constraints for locked joints too. IcfModel::ReduceInto() removes
+  // them with the locked DoFs.
+  int index = 0;
+  for (JointIndex joint_index : plant_.GetJointIndices()) {
+    const Joint<T>& joint = plant_.get_joint(joint_index);
+    const VectorX<T>& dry_friction = joint.GetDryFrictionVector(context);
+    if ((dry_friction.array() == 0.0).all()) continue;
+
+    const int velocity_start = joint.velocity_start();
+    const TreeIndex tree_index = forest.v_to_tree_index(velocity_start);
+    const int tree_dof = velocity_start - forest.trees(tree_index).v_start();
+    const int clique = tree_to_clique(tree_index);
+    frictions.Set(index, clique, tree_dof, dry_friction(0));
+    ++index;
+  }
+  // Check that we exactly filled the constraint pool.
+  DRAKE_DEMAND(index == frictions.num_constraints());
 }
 
 template <typename T>

@@ -3457,8 +3457,9 @@ void MultibodyPlant<T>::ThrowIfUnsupportedContinuousTimeDynamics(
     throw std::logic_error(fmt::format(
         "Currently this MultibodyPlant is set to use continuous time. "
         "Continuous time does not support joint dry friction, but it is "
-        "specified for joints {}. Use a discrete time model, or set the dry "
-        "friction of these joints to zero, see Joint::SetDryFrictionVector().",
+        "specified for joints {}. Use a discrete time model, use the 'cenic' "
+        "integration scheme, or set the dry friction of these joints to zero, "
+        "see Joint::SetDryFrictionVector().",
         fmt::join(joints_with_dry_friction, ", ")));
   }
 
