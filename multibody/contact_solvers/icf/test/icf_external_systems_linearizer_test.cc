@@ -1,6 +1,8 @@
 #include "drake/multibody/contact_solvers/icf/icf_external_systems_linearizer.h"
 
+#include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -12,10 +14,12 @@
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/prismatic_joint.h"
+#include "drake/multibody/tree/revolute_joint.h"
 #include "drake/systems/controllers/pid_controller.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/primitives/linear_system.h"
+#include "drake/systems/primitives/matrix_gain.h"
 
 namespace drake {
 namespace multibody {
@@ -23,6 +27,7 @@ namespace contact_solvers {
 namespace icf {
 namespace internal {
 
+using Eigen::Matrix2d;
 using Eigen::MatrixXd;
 using Eigen::Vector2d;
 using Eigen::Vector3d;
@@ -36,6 +41,7 @@ using systems::Context;
 using systems::Diagram;
 using systems::DiagramBuilder;
 using systems::FirstOrderTaylorApproximation;
+using systems::MatrixGain;
 using systems::controllers::PidController;
 
 class LinearizerTestFixture {
@@ -66,11 +72,18 @@ class LinearizerTestFixture {
     DRAKE_DEMAND(plant_context_ != nullptr);
     const IcfExternalSystemsLinearizer<double> dut(&plant_);
     const int nv = plant_.num_velocities();
+    // The outputs start with NaN, so a test fails if the DUT does not write
+    // every entry.
+    const double kNaN = std::numeric_limits<double>::quiet_NaN();
     Result result;
     result.actuation_feedback.emplace();
     result.actuation_feedback->Resize(nv);
+    result.actuation_feedback->K.setConstant(kNaN);
+    result.actuation_feedback->b.setConstant(kNaN);
     result.external_feedback.emplace();
     result.external_feedback->Resize(nv);
+    result.external_feedback->K.setConstant(kNaN);
+    result.external_feedback->b.setConstant(kNaN);
     bool has_actuation_forces{};
     bool has_feedback_forces{};
     std::tie(has_actuation_forces, has_feedback_forces) =
@@ -592,6 +605,193 @@ TEST_P(IcfExternalSystemsLinearizerChoosePortTest, BangBang) {
 
 INSTANTIATE_TEST_SUITE_P(AllPorts, IcfExternalSystemsLinearizerChoosePortTest,
                          ::testing::Values(0, 1));
+
+// MJCF model of an actuated double pendulum on a floating base. The floating
+// base comes first in the tree. Therefore, the position index of each pendulum
+// joint is not equal to the velocity index of the same joint.
+constexpr char kFloatingBasePendulumXml[] = R"""(
+<?xml version="1.0"?>
+<mujoco model="robot">
+  <worldbody>
+    <body name="base">
+      <freejoint/>
+      <geom type="sphere" size="0.1"/>
+      <body>
+        <joint name="joint1" type="hinge" axis="0 1 0" pos="0 0 0.1"/>
+        <geom type="capsule" size="0.01 0.1"/>
+        <body>
+          <joint name="joint2" type="hinge" axis="0 1 0" pos="0 0 -0.1"/>
+          <geom type="capsule" size="0.01 0.1" pos="0 0 -0.2"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor joint="joint1"/>
+    <motor joint="joint2"/>
+  </actuator>
+</mujoco>
+)""";
+
+// A joint impedance "controller" that takes the plant's state_output_port as
+// input and produces actuation for joint1 and joint2 of
+// kFloatingBasePendulumXml. The stiffness Kp is a full matrix, so the actuation
+// of each joint depends on the position of the other joint. Robot controllers
+// with gravity compensation have the same coupling.
+class CoupledPdController final : public systems::LeafSystem<double> {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(CoupledPdController);
+
+  explicit CoupledPdController(const MultibodyPlant<double>& plant) {
+    const Joint<double>& joint1 = plant.GetJointByName("joint1");
+    const Joint<double>& joint2 = plant.GetJointByName("joint2");
+    const int nq = plant.num_positions();
+    q_indices_ = {joint1.position_start(), joint2.position_start()};
+    v_indices_ = {nq + joint1.velocity_start(), nq + joint2.velocity_start()};
+    DeclareVectorInputPort("in", plant.num_multibody_states());
+    DeclareVectorOutputPort("out", 2, &CoupledPdController::CalcOutput);
+  }
+
+  static Matrix2d Kp() { return (Matrix2d() << 10, 5, 5, 8).finished(); }
+  static Vector2d Kd() { return Vector2d{0.2, 0.3}; }
+
+  // Returns the number of times that the output was calculated.
+  int num_evaluations() const { return num_evaluations_; }
+
+ private:
+  void CalcOutput(const Context<double>& context,
+                  BasicVector<double>* output) const {
+    ++num_evaluations_;
+    // Our input is connected to the plant's state_output_port.
+    const VectorXd& x = get_input_port().Eval(context);
+    const Vector2d q{x(q_indices_[0]), x(q_indices_[1])};
+    const Vector2d v{x(v_indices_[0]), x(v_indices_[1])};
+    // The feedback term is u = -(Kp q + Kd v).
+    output->SetFromVector(-(Kp() * q + Kd().cwiseProduct(v)));
+  }
+
+  std::array<int, 2> q_indices_{};
+  std::array<int, 2> v_indices_{};
+  mutable int num_evaluations_{0};
+};
+
+// Tests kFloatingBasePendulumXml with a CoupledPdController on the actuation
+// input port. When the parameter `add_damping` is true, the applied generalized
+// force input port also has a viscous damping τₑ = -kDamping⋅v on all
+// velocities.
+class FloatingBasePendulumTest : public LinearizerTestFixture,
+                                 public ::testing::TestWithParam<bool> {
+ protected:
+  static constexpr double kDamping = 0.7;
+
+  void SetUp() override {
+    const bool add_damping = GetParam();
+    Parser(builder_.get()).AddModelsFromString(kFloatingBasePendulumXml, "xml");
+    plant_.Finalize();
+    controller_ = builder_->AddSystem<CoupledPdController>(plant_);
+    builder_->Connect(plant_.get_state_output_port(),
+                      controller_->get_input_port());
+    builder_->Connect(controller_->get_output_port(),
+                      plant_.get_actuation_input_port());
+    if (add_damping) {
+      const int nq = plant_.num_positions();
+      const int nv = plant_.num_velocities();
+      MatrixXd D = MatrixXd::Zero(nv, nq + nv);
+      D.rightCols(nv) = -kDamping * MatrixXd::Identity(nv, nv);
+      auto damping = builder_->AddSystem<MatrixGain<double>>(D);
+      builder_->Connect(plant_.get_state_output_port(),
+                        damping->get_input_port());
+      builder_->Connect(damping->get_output_port(),
+                        plant_.get_applied_generalized_force_input_port());
+    }
+    Build();
+
+    // Set an arbitrary non-zero state.
+    const RigidBody<double>& base = plant_.GetBodyByName("base");
+    plant_.SetFloatingBaseBodyPoseInWorldFrame(
+        plant_context_, base,
+        RigidTransformd(RollPitchYawd(0.1, 0.2, 0.3), Vector3d(1, 2, 3)));
+    plant_.SetFreeBodySpatialVelocity(
+        plant_context_, base,
+        SpatialVelocity<double>(Vector6d::LinSpaced(-0.6, 0.6)));
+    joint1().set_angle(plant_context_, joint_q0_(0));
+    joint2().set_angle(plant_context_, joint_q0_(1));
+    joint1().set_angular_rate(plant_context_, joint_v0_(0));
+    joint2().set_angular_rate(plant_context_, joint_v0_(1));
+  }
+
+  const RevoluteJoint<double>& joint1() const {
+    return plant_.GetJointByName<RevoluteJoint>("joint1");
+  }
+  const RevoluteJoint<double>& joint2() const {
+    return plant_.GetJointByName<RevoluteJoint>("joint2");
+  }
+
+  const Vector2d joint_q0_{0.1, 0.2};
+  const Vector2d joint_v0_{0.3, 0.4};
+  CoupledPdController* controller_{};
+};
+
+// Checks the gains against the analytic values. The joint positions and the
+// joint velocities have different indices, so this test fails if the
+// linearizer does not restore every position that it perturbed. In that case,
+// the coupled stiffness leaks into the gain of the next joint.
+TEST_P(FloatingBasePendulumTest, Gains) {
+  const bool add_damping = GetParam();
+  ASSERT_NE(joint1().position_start(), joint1().velocity_start());
+  ASSERT_NE(joint2().position_start(), joint2().velocity_start());
+
+  const double h = 0.01;
+  const auto result = LinearizeExternalSystem(h);
+  ASSERT_TRUE(result.actuation_feedback.has_value());
+  ASSERT_EQ(result.external_feedback.has_value(), add_damping);
+
+  // At x̃₀ = [q₀ + h⋅N₀⋅v₀; v₀], the joint positions are q₀ + h⋅v₀.
+  // K = -du/dv = Kd + h⋅diag(Kp), and b = u(x̃₀) + K⋅v₀.
+  const Matrix2d Kp = CoupledPdController::Kp();
+  const Vector2d Kd = CoupledPdController::Kd();
+  const Vector2d u_tilde0 =
+      -(Kp * (joint_q0_ + h * joint_v0_) + Kd.cwiseProduct(joint_v0_));
+  const Vector2d K_joints = Kd + h * Kp.diagonal();
+  const Vector2d b_joints = u_tilde0 + K_joints.cwiseProduct(joint_v0_);
+
+  // The base has no actuators, so K = 0 and b = 0 for the base velocities.
+  const int nv = plant_.num_velocities();
+  VectorXd K_expected = VectorXd::Zero(nv);
+  VectorXd b_expected = VectorXd::Zero(nv);
+  const std::array<int, 2> joint_v = {joint1().velocity_start(),
+                                      joint2().velocity_start()};
+  for (int j = 0; j < 2; ++j) {
+    K_expected(joint_v[j]) = K_joints(j);
+    b_expected(joint_v[j]) = b_joints(j);
+  }
+
+  // Forward differences of an affine function are exact, except for
+  // round-off error.
+  const double kTol = 1e-6;
+  EXPECT_TRUE(CompareMatrices(result.actuation_feedback->K, K_expected, kTol));
+  EXPECT_TRUE(CompareMatrices(result.actuation_feedback->b, b_expected, kTol));
+  if (add_damping) {
+    // τₑ = -kDamping⋅v, so K = kDamping and b = τₑ(x̃₀) + K⋅v₀ = 0.
+    EXPECT_TRUE(CompareMatrices(result.external_feedback->K,
+                                VectorXd::Constant(nv, kDamping), kTol));
+    EXPECT_TRUE(
+        CompareMatrices(result.external_feedback->b, VectorXd::Zero(nv), kTol));
+  }
+}
+
+// Checks the cost of the actuation linearization. The linearizer evaluates the
+// actuation at x₀, at x̃₀, and one time for each actuated velocity. The
+// floating base has six velocities without actuators, and the linearizer does
+// not evaluate the actuation for them.
+TEST_P(FloatingBasePendulumTest, ActuationEvaluations) {
+  const int num_before = controller_->num_evaluations();
+  LinearizeExternalSystem(/* h = */ 0.01);
+  EXPECT_EQ(controller_->num_evaluations() - num_before, 2 + 2);
+}
+
+INSTANTIATE_TEST_SUITE_P(WithAndWithoutDamping, FloatingBasePendulumTest,
+                         ::testing::Bool());
 
 }  // namespace internal
 }  // namespace icf
