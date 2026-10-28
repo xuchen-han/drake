@@ -127,6 +127,26 @@ class ScrewJoint final : public Joint<T> {
   /// child body B expressed in frame F as t_B_F = τ⋅Fâ_F.
   double default_damping() const { return this->default_damping_vector()[0]; }
 
+  /// Returns `this` joint's default dry friction bound in N⋅m, on the torque τ
+  /// about the screw axis. Refer to Joint::default_dry_friction_vector() for
+  /// details on the model.
+  double default_dry_friction() const {
+    return this->default_dry_friction_vector()[0];
+  }
+
+  /// Sets the default value of the dry friction bound for this joint, in
+  /// N⋅m. Refer to default_dry_friction() for details.
+  /// @throws std::exception if dry_friction is negative.
+  /// @throws std::exception if this element is not associated with a
+  ///   MultibodyPlant.
+  /// @pre the MultibodyPlant must not be finalized.
+  void set_default_dry_friction(double dry_friction) {
+    DRAKE_THROW_UNLESS(dry_friction >= 0);
+    DRAKE_THROW_UNLESS(this->has_parent_tree());
+    DRAKE_DEMAND(!this->get_parent_tree().is_finalized());
+    this->set_default_dry_friction_vector(Vector1d(dry_friction));
+  }
+
   /// @name Context-dependent value access
   /// @{
 
@@ -235,6 +255,25 @@ class ScrewJoint final : public Joint<T> {
   void SetDamping(Context<T>* context, const T& damping) const {
     DRAKE_THROW_UNLESS(damping >= 0);
     this->SetDampingVector(context, Vector1<T>(damping));
+  }
+
+  /// Returns the Context dependent dry friction bound stored as a parameter in
+  /// `context`. Refer to default_dry_friction() for details.
+  /// @param[in] context The context storing the state and parameters for the
+  /// model to which `this` joint belongs.
+  const T& GetDryFriction(const Context<T>& context) const {
+    return this->GetDryFrictionVector(context)[0];
+  }
+
+  /// Sets the value of the dry friction bound for this joint, stored as a
+  /// parameter in `context`. Refer to default_dry_friction() for details.
+  /// @param[out] context The context storing the state and parameters for the
+  /// model to which `this` joint belongs.
+  /// @param[in] dry_friction The dry friction bound, in N⋅m.
+  /// @throws std::exception if `dry_friction` is negative.
+  void SetDryFriction(Context<T>* context, const T& dry_friction) const {
+    DRAKE_THROW_UNLESS(dry_friction >= 0);
+    this->SetDryFrictionVector(context, Vector1<T>(dry_friction));
   }
 
   /// @}

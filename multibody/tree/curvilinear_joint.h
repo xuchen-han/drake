@@ -140,6 +140,26 @@ class CurvilinearJoint final : public Joint<T> {
     this->set_default_damping_vector(Vector1d(damping));
   }
 
+  /** Returns `this` joint's default dry friction bound in N, on the force
+   along the tangent to the curve. Refer to
+   Joint::default_dry_friction_vector() for details on the model. */
+  double default_dry_friction() const {
+    return this->default_dry_friction_vector()[0];
+  }
+
+  /** Sets the default value of the dry friction bound for this joint, in N.
+   Refer to default_dry_friction() for details.
+   @throws std::exception if dry_friction is negative.
+   @throws std::exception if this element is not associated with a
+   MultibodyPlant.
+   @pre the MultibodyPlant must not be finalized. */
+  void set_default_dry_friction(double dry_friction) {
+    DRAKE_THROW_UNLESS(dry_friction >= 0);
+    DRAKE_THROW_UNLESS(this->has_parent_tree());
+    DRAKE_DEMAND(!this->get_parent_tree().is_finalized());
+    this->set_default_dry_friction_vector(Vector1d(dry_friction));
+  }
+
   /** Returns the position lower limit for `this` joint in m. */
   double position_lower_limit() const {
     return this->position_lower_limits()[0];
@@ -230,6 +250,25 @@ class CurvilinearJoint final : public Joint<T> {
   void SetDamping(systems::Context<T>* context, const T& damping) const {
     DRAKE_THROW_UNLESS(damping >= 0);
     this->SetDampingVector(context, Vector1<T>(damping));
+  }
+
+  /** Returns the Context dependent dry friction bound stored as a parameter in
+  `context`. Refer to default_dry_friction() for details.
+   @param[in] context The context of the model this joint belongs to.
+   @returns The dry friction bound stored in the context, in N. */
+  const T& GetDryFriction(const systems::Context<T>& context) const {
+    return this->GetDryFrictionVector(context)[0];
+  }
+
+  /** Sets the value of the dry friction bound for this joint, stored as a
+   parameter in `context`. Refer to default_dry_friction() for details.
+   @param[out] context The context of the model this joint belongs to.
+   @param[in] dry_friction The dry friction bound to be set in N.
+   @throws std::exception if `dry_friction` is negative. */
+  void SetDryFriction(systems::Context<T>* context,
+                      const T& dry_friction) const {
+    DRAKE_THROW_UNLESS(dry_friction >= 0);
+    this->SetDryFrictionVector(context, Vector1<T>(dry_friction));
   }
 
   /** Gets the default travel distance along the path. */

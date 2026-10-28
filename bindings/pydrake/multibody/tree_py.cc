@@ -658,7 +658,15 @@ void DoScalarDependentDefinitions(py::module_ m, T) {
         .def("GetDamping", &Class::GetDamping, py::arg("context"),
             cls_doc.GetDamping.doc)
         .def("SetDamping", &Class::SetDamping, py::arg("context"),
-            py::arg("damping"), cls_doc.SetDamping.doc);
+            py::arg("damping"), cls_doc.SetDamping.doc)
+        .def("default_dry_friction", &Class::default_dry_friction,
+            cls_doc.default_dry_friction.doc)
+        .def("set_default_dry_friction", &Class::set_default_dry_friction,
+            py::arg("dry_friction"), cls_doc.set_default_dry_friction.doc)
+        .def("GetDryFriction", &Class::GetDryFriction, py::arg("context"),
+            cls_doc.GetDryFriction.doc)
+        .def("SetDryFriction", &Class::SetDryFriction, py::arg("context"),
+            py::arg("dry_friction"), cls_doc.SetDryFriction.doc);
   }
 
   // QuaternionFloatingJoint
@@ -782,7 +790,15 @@ void DoScalarDependentDefinitions(py::module_ m, T) {
         .def("GetDamping", &Class::GetDamping, py::arg("context"),
             cls_doc.GetDamping.doc)
         .def("SetDamping", &Class::SetDamping, py::arg("context"),
-            py::arg("damping"), cls_doc.SetDamping.doc);
+            py::arg("damping"), cls_doc.SetDamping.doc)
+        .def("default_dry_friction", &Class::default_dry_friction,
+            cls_doc.default_dry_friction.doc)
+        .def("set_default_dry_friction", &Class::set_default_dry_friction,
+            py::arg("dry_friction"), cls_doc.set_default_dry_friction.doc)
+        .def("GetDryFriction", &Class::GetDryFriction, py::arg("context"),
+            cls_doc.GetDryFriction.doc)
+        .def("SetDryFriction", &Class::SetDryFriction, py::arg("context"),
+            py::arg("dry_friction"), cls_doc.SetDryFriction.doc);
   }
 
   // RpyFloatingJoint
@@ -900,7 +916,15 @@ void DoScalarDependentDefinitions(py::module_ m, T) {
         .def("GetDamping", &Class::GetDamping, py::arg("context"),
             cls_doc.GetDamping.doc)
         .def("SetDamping", &Class::SetDamping, py::arg("context"),
-            py::arg("damping"), cls_doc.SetDamping.doc);
+            py::arg("damping"), cls_doc.SetDamping.doc)
+        .def("default_dry_friction", &Class::default_dry_friction,
+            cls_doc.default_dry_friction.doc)
+        .def("set_default_dry_friction", &Class::set_default_dry_friction,
+            py::arg("dry_friction"), cls_doc.set_default_dry_friction.doc)
+        .def("GetDryFriction", &Class::GetDryFriction, py::arg("context"),
+            cls_doc.GetDryFriction.doc)
+        .def("SetDryFriction", &Class::SetDryFriction, py::arg("context"),
+            py::arg("dry_friction"), cls_doc.SetDryFriction.doc);
   }
 
   // UniversalJoint

@@ -2550,6 +2550,17 @@ class TestPlant(unittest.TestCase):
                     dry_friction=dry_friction_vector
                 )
 
+            if joint.name() in ["prismatic", "revolute", "screw"]:
+                # This must be called pre-Finalize().
+                joint.set_default_dry_friction(
+                    dry_friction=different_dry_friction
+                )
+                self.assertEqual(
+                    joint.default_dry_friction(), different_dry_friction
+                )
+                joint.set_default_dry_friction(dry_friction=dry_friction)
+                self.assertEqual(joint.default_dry_friction(), dry_friction)
+
             if joint.name() in ["prismatic", "revolute"]:
                 # This must be called pre-Finalize().
                 joint.set_default_damping(damping=damping)
@@ -2611,6 +2622,15 @@ class TestPlant(unittest.TestCase):
                 )
                 joint.SetDryFrictionVector(
                     context, array_T(dry_friction_vector)
+                )
+
+            if joint.name() in ["prismatic", "revolute", "screw"]:
+                numpy_compare.assert_equal(
+                    joint.GetDryFriction(context), T(dry_friction)
+                )
+                joint.SetDryFriction(context, T(different_dry_friction))
+                numpy_compare.assert_equal(
+                    joint.GetDryFriction(context), T(different_dry_friction)
                 )
 
             if joint.name() == "ball_rpy":

@@ -162,6 +162,25 @@ TEST_F(RevoluteJointTest, DryFriction) {
                std::exception);
 }
 
+TEST_F(RevoluteJointTest, ScalarDryFriction) {
+  // MakeModel() resets joint1_, so check the context first.
+  const double new_dry_friction = 2.0 * kDryFriction;
+  EXPECT_EQ(joint1_->GetDryFriction(*context_), kDryFriction);
+  joint1_->SetDryFriction(context_.get(), new_dry_friction);
+  EXPECT_EQ(joint1_->GetDryFriction(*context_), new_dry_friction);
+  EXPECT_EQ(joint1_->GetDryFrictionVector(*context_),
+            Vector1d(new_dry_friction));
+  EXPECT_THROW(joint1_->SetDryFriction(context_.get(), -1), std::exception);
+
+  std::unique_ptr<internal::MultibodyTree<double>> model = MakeModel();
+  auto& joint = model->GetMutableJointByName<RevoluteJoint>("Joint1");
+  EXPECT_EQ(joint.default_dry_friction(), kDryFriction);
+  joint.set_default_dry_friction(new_dry_friction);
+  EXPECT_EQ(joint.default_dry_friction(), new_dry_friction);
+  EXPECT_EQ(joint.default_dry_friction_vector(), Vector1d(new_dry_friction));
+  EXPECT_THROW(joint.set_default_dry_friction(-1), std::exception);
+}
+
 // Context-dependent value access.
 TEST_F(RevoluteJointTest, ContextDependentAccess) {
   const double some_value = M_PI_2;

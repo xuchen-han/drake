@@ -28,6 +28,7 @@ constexpr double kVelocityUpperLimit = 1.6;
 constexpr double kAccelerationLowerLimit = -1.2;
 constexpr double kAccelerationUpperLimit = 1.7;
 constexpr double kDamping = 3;
+constexpr double kDryFriction = 0.7;
 
 class CurvilinearJointTest : public ::testing::Test {
  public:
@@ -145,6 +146,25 @@ TEST_F(CurvilinearJointTest, Damping) {
 
   // Expect to throw on invalid damping values.
   EXPECT_THROW(joint.set_default_damping(-1), std::exception);
+}
+
+TEST_F(CurvilinearJointTest, DryFriction) {
+  // MakeModel() resets joint1_, so check the context first.
+  const double new_dry_friction = 2.0 * kDryFriction;
+  EXPECT_EQ(joint1_->GetDryFriction(*context_), 0.0);
+  joint1_->SetDryFriction(context_.get(), new_dry_friction);
+  EXPECT_EQ(joint1_->GetDryFriction(*context_), new_dry_friction);
+  EXPECT_EQ(joint1_->GetDryFrictionVector(*context_),
+            Vector1d(new_dry_friction));
+  EXPECT_THROW(joint1_->SetDryFriction(context_.get(), -1), std::exception);
+
+  std::unique_ptr<internal::MultibodyTree<double>> model = MakeModel();
+  auto& joint = model->GetMutableJointByName<CurvilinearJoint>("Joint1");
+  EXPECT_EQ(joint.default_dry_friction(), 0.0);
+  joint.set_default_dry_friction(new_dry_friction);
+  EXPECT_EQ(joint.default_dry_friction(), new_dry_friction);
+  EXPECT_EQ(joint.default_dry_friction_vector(), Vector1d(new_dry_friction));
+  EXPECT_THROW(joint.set_default_dry_friction(-1), std::exception);
 }
 
 // Context-dependent value access.
