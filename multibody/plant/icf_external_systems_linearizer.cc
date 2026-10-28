@@ -1,4 +1,4 @@
-#include "drake/multibody/contact_solvers/icf/icf_external_systems_linearizer.h"
+#include "drake/multibody/plant/icf_external_systems_linearizer.h"
 
 #include <cmath>
 #include <limits>
@@ -38,21 +38,10 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
   plant_.ValidateContext(plant_context);
 
   // Check which feedback values might be non-zero.
-  bool has_actuation_input =
-      plant_.get_actuation_input_port().HasValue(plant_context);
-  bool has_desired_state_input = false;
-  for (ModelInstanceIndex i{0}; i < plant_.num_model_instances(); ++i) {
-    has_actuation_input =
-        has_actuation_input ||
-        plant_.get_actuation_input_port(i).HasValue(plant_context);
-    has_desired_state_input =
-        has_desired_state_input ||
-        plant_.get_desired_state_input_port(i).HasValue(plant_context);
-  }
-  const bool has_external_force_input =
-      plant_.get_applied_generalized_force_input_port().HasValue(
-          plant_context) ||
-      plant_.get_applied_spatial_force_input_port().HasValue(plant_context);
+  const ConnectedInputs connected = FindConnectedInputs(plant_context);
+  const bool has_actuation_input = connected.actuation;
+  const bool has_desired_state_input = connected.desired_state;
+  const bool has_external_force_input = connected.external_forces;
 
   // Maybe there's nothing to do.
   if (!has_actuation_input && !has_desired_state_input &&
@@ -194,38 +183,103 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
       Ku.setZero();
       bu.setZero();
     }
-    using Attorney = multibody::internal::MultibodyPlantIcfAttorney<T>;
-    const DesiredStateInput<T>& desired_state =
-        Attorney::EvalDesiredStateInput(plant_, plant_context);
-    const Eigen::VectorBlock<const VectorX<T>> full_q =
-        plant_.GetPositions(plant_context);
-    for (const typename DesiredStateInput<T>::Item& item :
-         desired_state.items) {
-      const JointActuator<T>& actuator =
-          plant_.get_joint_actuator(item.actuator_index);
-      const Joint<T>& joint = actuator.joint();
-      const PdControllerGains& gains = actuator.get_controller_gains();
-      const T& Kp = gains.p;
-      const T& Kd = gains.d;
-      const T& q0 = full_q[joint.position_start()];
-      const T& qd = item.qd;
-      const T& vd = item.vd;
-      // The PD controller's force contribution is:
-      //    -Kp⋅(q - qd) - Kd⋅(v - vd)
-      //  = -Kp⋅((q₀ + h⋅v) - qd) - Kd⋅(v - vd)
-      //  = -Kp⋅q₀ - Kp⋅h⋅v + Kp⋅qd - Kd⋅v + Kd⋅vd
-      // Regrouping into terms with `v` vs terms without gives:
-      //  = (-Kp⋅h⋅v - Kd⋅v) + (-Kp⋅q₀ + Kp⋅qd + Kd⋅vd)
-      //  = -(Kp⋅h + Kd)⋅v + (-Kp⋅(q₀ - qd) + Kd⋅vd)
-      // Relating that to our chosen linearization τᵤ(v) ≈ clamp(-Kᵤ⋅v + bᵤ; e),
-      // we can read out the terms:
-      Ku[joint.velocity_start()] += h * Kp + Kd;
-      bu[joint.velocity_start()] += -Kp * (q0 - qd) + Kd * vd;
-    }
+    AddDesiredStateTerms(h, plant_context, &Ku, &bu);
   }
 
   return {has_actuation_input || has_desired_state_input,
           has_external_force_input};
+}
+
+template <typename T>
+std::tuple<bool, bool>
+IcfExternalSystemsLinearizer<T>::CalcExplicitFeedbackGains(
+    const T& h, const Context<T>& plant_context,
+    IcfLinearFeedbackGains<T>* actuation_feedback,
+    IcfLinearFeedbackGains<T>* external_feedback) const {
+  DRAKE_ASSERT(actuation_feedback != nullptr);
+  DRAKE_ASSERT(external_feedback != nullptr);
+  plant_.ValidateContext(plant_context);
+
+  const ConnectedInputs connected = FindConnectedInputs(plant_context);
+  const bool has_actuation = connected.actuation || connected.desired_state;
+  if (has_actuation) {
+    VectorX<T>& Ku = actuation_feedback->K;
+    VectorX<T>& bu = actuation_feedback->b;
+    DRAKE_ASSERT(Ku.size() == plant_.num_velocities());
+    DRAKE_ASSERT(bu.size() == plant_.num_velocities());
+    // The inputs are constant during the step, thus Kᵤ = 0 and bᵤ = B⋅u(x₀).
+    Ku.setZero();
+    if (connected.actuation) {
+      CalcActuationForces(plant_context, &bu);
+    } else {
+      bu.setZero();
+    }
+    if (connected.desired_state) {
+      AddDesiredStateTerms(h, plant_context, &Ku, &bu);
+    }
+  }
+  if (connected.external_forces) {
+    // The inputs are constant during the step, thus Kₑ = 0 and bₑ = τₑ(x₀).
+    external_feedback->K.setZero();
+    CalcExternalForces(plant_context, &external_feedback->b);
+  }
+  return {has_actuation, connected.external_forces};
+}
+
+template <typename T>
+typename IcfExternalSystemsLinearizer<T>::ConnectedInputs
+IcfExternalSystemsLinearizer<T>::FindConnectedInputs(
+    const Context<T>& plant_context) const {
+  ConnectedInputs result;
+  result.actuation = plant_.get_actuation_input_port().HasValue(plant_context);
+  for (ModelInstanceIndex i{0}; i < plant_.num_model_instances(); ++i) {
+    result.actuation =
+        result.actuation ||
+        plant_.get_actuation_input_port(i).HasValue(plant_context);
+    result.desired_state =
+        result.desired_state ||
+        plant_.get_desired_state_input_port(i).HasValue(plant_context);
+  }
+  result.external_forces =
+      plant_.get_applied_generalized_force_input_port().HasValue(
+          plant_context) ||
+      plant_.get_applied_spatial_force_input_port().HasValue(plant_context);
+  return result;
+}
+
+template <typename T>
+void IcfExternalSystemsLinearizer<T>::AddDesiredStateTerms(
+    const T& h, const Context<T>& plant_context, VectorX<T>* Ku,
+    VectorX<T>* bu) const {
+  DRAKE_ASSERT(Ku != nullptr);
+  DRAKE_ASSERT(bu != nullptr);
+  using Attorney = multibody::internal::MultibodyPlantIcfAttorney<T>;
+  const DesiredStateInput<T>& desired_state =
+      Attorney::EvalDesiredStateInput(plant_, plant_context);
+  const Eigen::VectorBlock<const VectorX<T>> full_q =
+      plant_.GetPositions(plant_context);
+  for (const typename DesiredStateInput<T>::Item& item : desired_state.items) {
+    const JointActuator<T>& actuator =
+        plant_.get_joint_actuator(item.actuator_index);
+    const Joint<T>& joint = actuator.joint();
+    const PdControllerGains& gains = actuator.get_controller_gains();
+    const T& Kp = gains.p;
+    const T& Kd = gains.d;
+    const T& q0 = full_q[joint.position_start()];
+    const T& qd = item.qd;
+    const T& vd = item.vd;
+    // The PD controller's force contribution is:
+    //    -Kp⋅(q - qd) - Kd⋅(v - vd)
+    //  = -Kp⋅((q₀ + h⋅v) - qd) - Kd⋅(v - vd)
+    //  = -Kp⋅q₀ - Kp⋅h⋅v + Kp⋅qd - Kd⋅v + Kd⋅vd
+    // Regrouping into terms with `v` vs terms without gives:
+    //  = (-Kp⋅h⋅v - Kd⋅v) + (-Kp⋅q₀ + Kp⋅qd + Kd⋅vd)
+    //  = -(Kp⋅h + Kd)⋅v + (-Kp⋅(q₀ - qd) + Kd⋅vd)
+    // Relating that to our chosen linearization τᵤ(v) ≈ clamp(-Kᵤ⋅v + bᵤ; e),
+    // we can read out the terms:
+    (*Ku)[joint.velocity_start()] += h * Kp + Kd;
+    (*bu)[joint.velocity_start()] += -Kp * (q0 - qd) + Kd * vd;
+  }
 }
 
 template <typename T>

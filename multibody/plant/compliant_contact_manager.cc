@@ -13,6 +13,7 @@
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
+#include "drake/multibody/plant/icf_driver.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/sap_driver.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
@@ -77,6 +78,30 @@ void CompliantContactManager<T>::set_sap_solver_parameters(
 }
 
 template <typename T>
+void CompliantContactManager<T>::set_icf_solver_parameters(
+    const contact_solvers::icf::IcfSolverParameters& parameters) {
+  if constexpr (std::is_same_v<T, double>) {
+    DRAKE_THROW_UNLESS(icf_driver_ != nullptr);
+    icf_driver_->set_icf_solver_parameters(parameters);
+  } else {
+    unused(parameters);
+    throw std::logic_error(
+        "The ICF solver is only supported for T = double. Therefore this "
+        "method cannot be called.");
+  }
+}
+
+namespace {
+// Throws because there is no driver for discrete updates. This happens when
+// the plant uses DiscreteContactSolver::kIcf and T is not double.
+[[noreturn]] void ThrowIcfOnlySupportsDouble() {
+  throw std::logic_error(
+      "Discrete updates with the ICF solver (DiscreteContactSolver::kIcf) are "
+      "only supported for T = double.");
+}
+}  // namespace
+
+template <typename T>
 void CompliantContactManager<T>::DoDeclareCacheEntries() {
   // N.B. We use xd_ticket() instead of q_ticket() since discrete
   // multibody plant does not have q's, but rather discrete state.
@@ -109,6 +134,9 @@ void CompliantContactManager<T>::DoDeclareCacheEntries() {
   // Discrete updates with SAP are not supported when T = symbolic::Expression.
   if constexpr (!std::is_same_v<T, symbolic::Expression>) {
     if (sap_driver_ != nullptr) sap_driver_->DeclareCacheEntries(this);
+  }
+  if constexpr (std::is_same_v<T, double>) {
+    if (icf_driver_ != nullptr) icf_driver_->DeclareCacheEntries(this);
   }
 }
 
@@ -192,12 +220,18 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcContactSolverResults(
     const systems::Context<T>& context,
     ContactSolverResults<T>* contact_results) const {
+  if constexpr (std::is_same_v<T, double>) {
+    if (icf_driver_ != nullptr) {
+      icf_driver_->CalcContactSolverResults(context, contact_results);
+      return;
+    }
+  }
   if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error(
         "Discrete updates with the SAP solver are not supported for T = "
         "symbolic::Expression");
   } else {
-    DRAKE_DEMAND(sap_driver_ != nullptr);
+    if (sap_driver_ == nullptr) ThrowIcfOnlySupportsDouble();
     sap_driver_->CalcContactSolverResults(context, contact_results);
   }
 }
@@ -245,6 +279,20 @@ void CompliantContactManager<T>::DoExtractModelInfo() {
   // would be a bug leading to this method being called more than once on the
   // same manager.
   DRAKE_DEMAND(sap_driver_ == nullptr);
+  if constexpr (std::is_same_v<T, double>) {
+    DRAKE_DEMAND(icf_driver_ == nullptr);
+  }
+
+  // N.B. ICF is only supported for T = double. For other scalars, an exception
+  // will only be thrown if we attempt to compute discrete updates. This allows
+  // a user to scalar convert a plant and perform other supported queries such
+  // as introspection and kinematics.
+  if (plant().get_discrete_contact_solver() == DiscreteContactSolver::kIcf) {
+    if constexpr (std::is_same_v<T, double>) {
+      icf_driver_ = std::make_unique<IcfDriver>(this);
+    }
+    return;
+  }
 
   // N.B. SAP is not supported for T = symbolic::Expression.
   // However, exception will only be thrown if we attempt to use a SapDriver
@@ -283,12 +331,18 @@ void CompliantContactManager<T>::DoCalcAccelerationKinematicsCache(
 template <typename T>
 void CompliantContactManager<T>::DoCalcDiscreteUpdateMultibodyForces(
     const systems::Context<T>& context, MultibodyForces<T>* forces) const {
+  if constexpr (std::is_same_v<T, double>) {
+    if (icf_driver_ != nullptr) {
+      icf_driver_->CalcDiscreteUpdateMultibodyForces(context, forces);
+      return;
+    }
+  }
   if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error(
         "Discrete updates with the SAP solver are not supported for T = "
         "symbolic::Expression");
   } else {
-    DRAKE_DEMAND(sap_driver_ != nullptr);
+    if (sap_driver_ == nullptr) ThrowIcfOnlySupportsDouble();
     sap_driver_->CalcDiscreteUpdateMultibodyForces(context, forces);
   }
 }
@@ -296,12 +350,18 @@ void CompliantContactManager<T>::DoCalcDiscreteUpdateMultibodyForces(
 template <typename T>
 void CompliantContactManager<T>::DoCalcActuation(
     const systems::Context<T>& context, VectorX<T>* actuation) const {
+  if constexpr (std::is_same_v<T, double>) {
+    if (icf_driver_ != nullptr) {
+      icf_driver_->CalcActuation(context, actuation);
+      return;
+    }
+  }
   if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error(
         "Discrete updates with the SAP solver are not supported for T = "
         "symbolic::Expression");
   } else {
-    DRAKE_DEMAND(sap_driver_ != nullptr);
+    if (sap_driver_ == nullptr) ThrowIcfOnlySupportsDouble();
     sap_driver_->CalcActuation(context, actuation);
   }
 }

@@ -98,6 +98,27 @@ void HolonomicConstraintsPool<T, N, Derived>::CalcData(
 }
 
 template <typename T, int N, typename Derived>
+void HolonomicConstraintsPool<T, N, Derived>::AccumulateBodySpatialImpulses(
+    const IcfData<T>& data, std::vector<Vector6<T>>* Gamma_Bo_W) const {
+  DRAKE_ASSERT(Gamma_Bo_W != nullptr);
+  DRAKE_ASSERT(ssize(*Gamma_Bo_W) == model().num_bodies());
+  const DataPool& data_pool = derived().GetDataPool(data);
+
+  for (int k = 0; k < num_constraints(); ++k) {
+    const int bodyA = body_pairs_[k].first;
+    const int bodyB = body_pairs_[k].second;
+    const bool A_is_dynamic = !model().is_anchored(bodyA);
+    Vector6<T> Gamma_Bo, Gamma_Ao;
+    derived().CalcSpatialImpulses(k, data_pool.gamma(k), &Gamma_Bo,
+                                  A_is_dynamic ? &Gamma_Ao : nullptr);
+    (*Gamma_Bo_W)[bodyB] += Gamma_Bo;
+    if (A_is_dynamic) {
+      (*Gamma_Bo_W)[bodyA] += Gamma_Ao;
+    }
+  }
+}
+
+template <typename T, int N, typename Derived>
 void HolonomicConstraintsPool<T, N, Derived>::AccumulateGradient(
     const IcfData<T>& data, VectorX<T>* gradient) const {
   DRAKE_ASSERT(gradient != nullptr);

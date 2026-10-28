@@ -3,11 +3,11 @@
 #include <memory>
 #include <vector>
 
-#include "drake/multibody/contact_solvers/icf/icf_builder.h"
-#include "drake/multibody/contact_solvers/icf/icf_external_systems_linearizer.h"
 #include "drake/multibody/contact_solvers/icf/icf_model.h"
 #include "drake/multibody/contact_solvers/icf/icf_solver.h"
 #include "drake/multibody/contact_solvers/icf/icf_solver_parameters.h"
+#include "drake/multibody/plant/icf_builder.h"
+#include "drake/multibody/plant/icf_external_systems_linearizer.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/analysis/integrator_base.h"
 

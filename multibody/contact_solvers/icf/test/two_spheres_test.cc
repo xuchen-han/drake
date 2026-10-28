@@ -10,8 +10,8 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
 #include "drake/common/test_utilities/limit_malloc.h"
-#include "drake/multibody/contact_solvers/icf/icf_builder.h"
 #include "drake/multibody/parsing/parser.h"
+#include "drake/multibody/plant/icf_builder.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 

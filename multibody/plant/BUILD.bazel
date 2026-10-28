@@ -90,6 +90,9 @@ drake_cc_library(
         "dummy_physical_model.cc",
         "force_density_field_declare_system_resources.cc",
         "geometry_contact_data.cc",
+        "icf_builder.cc",
+        "icf_driver.cc",
+        "icf_external_systems_linearizer.cc",
         "make_discrete_update_manager.cc",
         "multibody_element_getter.cc",
         "multibody_plant.cc",
@@ -107,6 +110,9 @@ drake_cc_library(
         "dummy_physical_model.h",
         "geometry_contact_data.h",
         "hydroelastic_contact_forces_continuous_cache_data.h",
+        "icf_builder.h",
+        "icf_driver.h",
+        "icf_external_systems_linearizer.h",
         "make_discrete_update_manager.h",
         "multibody_plant.h",
         "multibody_plant_discrete_update_manager_attorney.h",
@@ -138,6 +144,10 @@ drake_cc_library(
         "//geometry:scene_graph",
         "//math:geometric_transform",
         "//multibody/contact_solvers:contact_solver",
+        "//multibody/contact_solvers/icf:icf_linear_feedback_gains",
+        "//multibody/contact_solvers/icf:icf_model",
+        "//multibody/contact_solvers/icf:icf_solver",
+        "//multibody/contact_solvers/icf:icf_solver_parameters",
         "//multibody/contact_solvers/sap",
         "//multibody/fem",
         "//multibody/hydroelastics:hydroelastic_engine",
@@ -488,6 +498,19 @@ drake_cc_googletest(
     name = "distance_constraint_params_test",
     deps = [
         ":distance_constraint_params",
+    ],
+)
+
+drake_cc_googletest(
+    name = "icf_driver_test",
+    deps = [
+        ":compliant_contact_manager_tester",
+        ":plant",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+        "//multibody/cenic:cenic_integrator",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram_builder",
     ],
 )
 

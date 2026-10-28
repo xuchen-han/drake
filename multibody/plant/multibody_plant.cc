@@ -370,6 +370,7 @@ MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other)
     collision_geometries_ = other.collision_geometries_;
     num_collision_geometries_ = other.num_collision_geometries_;
     contact_model_ = other.contact_model_;
+    discrete_contact_solver_ = other.discrete_contact_solver_;
     discrete_contact_approximation_ = other.discrete_contact_approximation_;
     sap_near_rigid_threshold_ = other.sap_near_rigid_threshold_;
     contact_surface_representation_ = other.contact_surface_representation_;
@@ -829,7 +830,15 @@ void MultibodyPlant<T>::set_contact_model(ContactModel model) {
 
 template <typename T>
 DiscreteContactSolver MultibodyPlant<T>::get_discrete_contact_solver() const {
-  return DiscreteContactSolver::kSap;
+  return discrete_contact_solver_;
+}
+
+template <typename T>
+void MultibodyPlant<T>::set_discrete_contact_solver(
+    DiscreteContactSolver solver) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  DRAKE_THROW_UNLESS(is_discrete());
+  discrete_contact_solver_ = solver;
 }
 
 template <typename T>

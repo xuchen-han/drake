@@ -181,9 +181,20 @@ enum class ContactModel {
 /// - [Castro et al., 2022] Castro A., Permenter F. and Han X., 2022. An
 ///   Unconstrained Convex Formulation of Compliant Contact. Available online at
 ///   https://arxiv.org/abs/2110.10107.
+/// - [Castro et al., 2023] Castro A., Han X., and Masterjohn J., 2023. A Theory
+///   of Irrotational Contact Fields. Available online at
+///   https://arxiv.org/abs/2312.03908
 enum class DiscreteContactSolver {
   /// SAP solver, see [Castro et al., 2022].
   kSap,
+  /// (Experimental) The convex solver of Irrotational Contact Fields (ICF),
+  /// see [Castro et al., 2023]. This is the solver that CenicIntegrator uses.
+  /// In a discrete %MultibodyPlant, it gives the "lagged" ICF model of
+  /// [Castro et al., 2023]: a step of this solver is the same as a step of
+  /// CenicIntegrator with error control turned off, but the plant inputs are
+  /// held constant during the step. Only T = double is supported. Deformable
+  /// bodies and tendon constraints are not supported.
+  kIcf,
 };
 
 /// The type of the contact approximation used for a discrete MultibodyPlant
@@ -2732,6 +2743,17 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
 
   /// Returns the contact solver type used for discrete %MultibodyPlant models.
   DiscreteContactSolver get_discrete_contact_solver() const;
+
+  /// (Experimental) Sets the contact solver type used for discrete
+  /// %MultibodyPlant models. The default is DiscreteContactSolver::kSap.
+  ///
+  /// With DiscreteContactSolver::kIcf, the plant ignores the
+  /// discrete contact approximation (see set_discrete_contact_approximation())
+  /// and the SAP near rigid threshold (see set_sap_near_rigid_threshold()).
+  ///
+  /// @throws iff `this` plant is continuous (i.e. is_discrete() is `false`.)
+  /// @throws std::exception iff called post-finalize.
+  void set_discrete_contact_solver(DiscreteContactSolver solver);
 
   /// Sets the discrete contact model approximation.
   ///
@@ -6992,6 +7014,9 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
   // with the default value in multibody_plant_config.h; there are already
   // assertions in the cc file that enforce this.
   ContactModel contact_model_{ContactModel::kHydroelasticWithFallback};
+
+  // The contact solver used by discrete MultibodyPlant models.
+  DiscreteContactSolver discrete_contact_solver_{DiscreteContactSolver::kSap};
 
   // The contact model approximation used by discrete MultibodyPlant models.
   DiscreteContactApproximation discrete_contact_approximation_{

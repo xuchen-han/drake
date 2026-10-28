@@ -17,9 +17,7 @@ drake_cc_package_library(
         ":eigen_pool",
         ":gain_constraints_data_pool",
         ":holonomic_constraints_data_pool",
-        ":icf_builder",
         ":icf_data",
-        ":icf_external_systems_linearizer",
         ":icf_hessian",
         ":icf_linear_feedback_gains",
         ":icf_model",
@@ -129,33 +127,6 @@ drake_cc_library(
         ":limit_constraints_data_pool",
         ":patch_constraints_data_pool",
         "//common:essential",
-    ],
-)
-
-drake_cc_library(
-    name = "icf_builder",
-    srcs = ["icf_builder.cc"],
-    hdrs = ["icf_builder.h"],
-    deps = [
-        ":icf_linear_feedback_gains",
-        ":icf_model",
-        "//common:essential",
-        "//multibody/plant",
-    ],
-    implementation_deps = [
-        "//math:geometric_transform",
-        "//multibody/plant:contact_properties",
-    ],
-)
-
-drake_cc_library(
-    name = "icf_external_systems_linearizer",
-    srcs = ["icf_external_systems_linearizer.cc"],
-    hdrs = ["icf_external_systems_linearizer.h"],
-    deps = [
-        ":icf_linear_feedback_gains",
-        "//common:essential",
-        "//multibody/plant",
     ],
 )
 
@@ -334,13 +305,13 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "icf_builder_test",
     deps = [
-        ":icf_builder",
         "//common:value",
         "//common/test_utilities",
         "//geometry:proximity_properties",
         "//geometry:shape_specification",
         "//math:geometric_transform",
         "//multibody/parsing",
+        "//multibody/plant",
         "//systems/framework:bus_value",
     ],
 )
@@ -356,7 +327,6 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "icf_external_systems_linearizer_test",
     deps = [
-        ":icf_external_systems_linearizer",
         "//common/test_utilities:eigen_matrix_compare",
         "//multibody/parsing",
         "//multibody/plant",
@@ -422,12 +392,12 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "two_spheres_test",
     deps = [
-        ":icf_builder",
         ":icf_model",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
         "//common/test_utilities:limit_malloc",
         "//multibody/parsing:parser",
+        "//multibody/plant",
         "//multibody/plant:contact_properties",
         "//systems/framework:diagram_builder",
     ],

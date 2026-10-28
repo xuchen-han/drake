@@ -148,6 +148,15 @@ class HolonomicConstraintsPool {
   int num_constraints() const { return ssize(body_pairs_); }
   void AccumulateGradient(const IcfData<T>& data, VectorX<T>* gradient) const;
   void AccumulateHessian(const IcfData<T>& data, IcfHessian<T>* hessian) const;
+
+  /* Adds the spatial impulse of each constraint to its two bodies.
+  @param data The data computed with IcfModel::CalcData().
+  @param[in,out] Gamma_Bo_W The spatial impulse on each body B at its origin Bo,
+                 expressed in the world frame, indexed by body. The impulse on
+                 an anchored body A is not added.
+  @pre Gamma_Bo_W->size() == model().num_bodies(). */
+  void AccumulateBodySpatialImpulses(const IcfData<T>& data,
+                                     std::vector<Vector6<T>>* Gamma_Bo_W) const;
   void ReduceInto(const ReducedMapping& mapping, Derived* reduced_pool) const;
 
   /* Resizes the pool (generic data + the derived's geometry) to store the given

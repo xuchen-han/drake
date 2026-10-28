@@ -1,4 +1,4 @@
-#include "drake/multibody/contact_solvers/icf/icf_external_systems_linearizer.h"
+#include "drake/multibody/plant/icf_external_systems_linearizer.h"
 
 #include <cmath>
 #include <memory>
