@@ -1,0 +1,16 @@
+load("//tools/skylark:drake_cc.bzl", "drake_cc_binary")
+
+drake_cc_binary(
+    name = "cenic_linearizer_bench",
+    srcs = ["cenic_linearizer_bench.cc"],
+    deps = [
+        "//multibody/cenic:cenic_integrator",
+        "//multibody/contact_solvers/icf:icf_external_systems_linearizer",
+        "//multibody/plant",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram_builder",
+        "//systems/framework:leaf_system",
+        "//systems/primitives:matrix_gain",
+        "@gflags",
+    ],
+)
