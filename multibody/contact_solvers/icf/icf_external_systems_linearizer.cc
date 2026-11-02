@@ -16,10 +16,29 @@ namespace internal {
 using multibody::internal::DesiredStateInput;
 using systems::Context;
 
+namespace {
+
+// Returns a mask over the plant velocities. An entry is true iff a joint
+// actuator drives that velocity.
+template <typename T>
+std::vector<bool> MakeActuatedVelocityMask(const MultibodyPlant<T>& plant) {
+  std::vector<bool> result(plant.num_velocities(), false);
+  for (JointActuatorIndex actuator_index : plant.GetJointActuatorIndices()) {
+    const Joint<T>& joint = plant.get_joint_actuator(actuator_index).joint();
+    DRAKE_DEMAND(joint.num_velocities() == 1);
+    result[joint.velocity_start()] = true;
+  }
+  return result;
+}
+
+}  // namespace
+
 template <typename T>
 IcfExternalSystemsLinearizer<T>::IcfExternalSystemsLinearizer(
     const MultibodyPlant<T>* plant)
-    : plant_(DRAKE_DEREF(plant)), scratch_(plant_) {}
+    : plant_(DRAKE_DEREF(plant)),
+      is_actuated_velocity_(MakeActuatedVelocityMask(plant_)),
+      scratch_(plant_) {}
 
 template <typename T>
 IcfExternalSystemsLinearizer<T>::~IcfExternalSystemsLinearizer() = default;
@@ -85,7 +104,9 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
     // Compute some quantities that depend on the current state, before messing
     // with the state with finite differences.
     // TODO(jwnimmer-tri) Avoid the memory allocation of N0.
-    const MatrixX<T> N0 = plant_.MakeVelocityToQDotMap(plant_context);
+    const Eigen::SparseMatrix<T> N0 =
+        plant_.MakeVelocityToQDotMap(plant_context);
+    using NColumnIterator = typename Eigen::SparseMatrix<T>::InnerIterator;
     if (has_actuation_input) {
       // tau_u0ᵢ is really only needed if Kuᵢ < 0.
       // TODO(amcastro-tri): Only compute if any Kuᵢ < 0.
@@ -125,10 +146,24 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
     auto q_prime = x_prime.head(nq);
     auto v_prime = x_prime.segment(nq, nv);
 
+    if (has_actuation_input) {
+      // A velocity without an actuator has τᵤᵢ(x) = 0 for all x. For such a
+      // velocity, the explicit approximation Kᵤᵢ = 0, bᵤᵢ = τᵤᵢ(x₀) = 0 is
+      // exact, so the loop below does not compute a finite difference of τᵤᵢ.
+      Ku.setZero();
+      bu = tau_u0;
+    }
+
     // Compute τ̃(v) = b - K⋅(v − v₀), using forward differences.
     // We do this separately for τᵤ(x) and τₑ(x), as needed by ICF.
     const double eps = std::sqrt(std::numeric_limits<double>::epsilon());
     for (int i = 0; i < nv; ++i) {
+      const bool linearize_actuation =
+          has_actuation_input && is_actuated_velocity_[i];
+      if (!linearize_actuation && !has_external_force_input) {
+        continue;
+      }
+
       // Choose a step size (the same way as how implicit_integrator.cc does
       // it).
       const T abs_vi = abs(v_tilde0(i));
@@ -139,16 +174,16 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
       v_prime(i) += dvi;
       dvi = v_prime(i) - v_tilde0(i);
 
-      // Perturb q as well, using the fact that q′ = q̃₀ + h N₀ dv.
-      // TODO(jwnimmer-tri) This seems wasteful; the (v_prime - v_tilde0) is
-      // sparse (only one element is non-zero) and typically N0 is also
-      // sparse. Consider using plant.MapVelocityToQDot or similar.
-      q_prime += h * N0 * (v_prime - v_tilde0);
+      // Perturb q as well, using the fact that q′ = q̃₀ + h N₀ dv. Only dvᵢ is
+      // non-zero, so only the non-zero entries in column i of N₀ change q′.
+      for (NColumnIterator it(N0, i); it; ++it) {
+        q_prime(it.row()) += h * it.value() * dvi;
+      }
 
       // Put x′ in the context and mark the state as stale.
       mutable_plant_context.SetContinuousState(x_prime);
 
-      if (has_actuation_input) {
+      if (linearize_actuation) {
         // Compute the relevant matrix entries for actuation inputs:
         //   Ku = -dgu/dv
         CalcActuationForces(mutable_plant_context, &tau_u_prime);
@@ -179,8 +214,12 @@ std::tuple<bool, bool> IcfExternalSystemsLinearizer<T>::LinearizeExternalSystem(
         }
       }
 
-      // Reset the state for the next iteration.
-      q_prime(i) = q_tilde0(i);
+      // Reset the state for the next iteration. The q entries that changed
+      // above can have indices other than i (e.g., when nq ≠ nv), so reset
+      // each of them.
+      for (NColumnIterator it(N0, i); it; ++it) {
+        q_prime(it.row()) = q_tilde0(it.row());
+      }
       v_prime(i) = v_tilde0(i);
     }
 
@@ -272,8 +311,16 @@ void IcfExternalSystemsLinearizer<T>::CalcExternalForces(
   using Attorney = multibody::internal::MultibodyPlantIcfAttorney<T>;
   MultibodyForces<T>& forces = scratch_.f_ext;
   forces.SetZero();
-  Attorney::AddAppliedExternalSpatialForces(plant_, context, &forces);
   Attorney::AddAppliedExternalGeneralizedForces(plant_, context, &forces);
+  if (!plant_.get_applied_spatial_force_input_port().HasValue(context)) {
+    // Without spatial forces, τₑ is equal to the applied generalized forces.
+    // Then we do not call CalcGeneralizedForces(), because its inverse
+    // dynamics pass is expensive and the linearizer calls this function one
+    // time for each velocity.
+    *tau = forces.generalized_forces();
+    return;
+  }
+  Attorney::AddAppliedExternalSpatialForces(plant_, context, &forces);
   plant_.CalcGeneralizedForces(context, forces, tau);
 }
 

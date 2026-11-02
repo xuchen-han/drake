@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <vector>
 
 #include "drake/common/default_scalars.h"
 #include "drake/multibody/contact_solvers/icf/icf_linear_feedback_gains.h"
@@ -93,7 +94,11 @@ class IcfExternalSystemsLinearizer {
     on output iff the `has_external_forces` return value is true. Must be sized
     to `num_velocities` when passed in.
   Returns a tuple [has_actuation_forces, has_external_forces] where a given
-  element is true iff any input is connected for the corresponding type. */
+  element is true iff any input is connected for the corresponding type.
+
+  A velocity without a joint actuator has zero actuation force. Therefore, this
+  function evaluates the actuation inputs at x₀, at x̃₀, and one time for each
+  actuated velocity, but not for the velocities without an actuator. */
   std::tuple<bool, bool> LinearizeExternalSystem(
       const T& h, systems::Context<T>& mutable_plant_context,
       IcfLinearFeedbackGains<T>* actuation_feedback,
@@ -134,6 +139,9 @@ class IcfExternalSystemsLinearizer {
                           VectorX<T>* tau) const;
 
   const MultibodyPlant<T>& plant_;
+
+  // Entry i is true iff a joint actuator drives velocity i.
+  const std::vector<bool> is_actuated_velocity_;
 
   // Pre-allocated scratch space for intermediate calculations.
   mutable Scratch scratch_;
