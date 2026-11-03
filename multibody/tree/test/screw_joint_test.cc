@@ -28,6 +28,7 @@ constexpr double kAccelerationLowerLimit = -1.2;
 constexpr double kAccelerationUpperLimit = 1.7;
 constexpr double kScrewPitch = 1.e-2;
 constexpr double kDamping = 3;
+constexpr double kDryFriction = 0.7;
 constexpr double kPositionNonZeroDefault = 0.25;
 
 class ScrewJointTest : public ::testing::Test {
@@ -54,6 +55,7 @@ class ScrewJointTest : public ::testing::Test {
     mutable_joint_->set_acceleration_limits(
         Vector1d::Constant(kAccelerationLowerLimit),
         Vector1d::Constant(kAccelerationUpperLimit));
+    mutable_joint_->set_default_dry_friction(kDryFriction);
 
     system_ = std::make_unique<internal::MultibodyTreeSystem<double>>(
         std::move(model), true /* is_discrete */);
@@ -113,6 +115,20 @@ TEST_F(ScrewJointTest, GetJointLimits) {
 TEST_F(ScrewJointTest, Damping) {
   EXPECT_EQ(joint_->default_damping(), kDamping);
   EXPECT_EQ(joint_->default_damping_vector(), Vector1d(kDamping));
+}
+
+TEST_F(ScrewJointTest, DryFriction) {
+  EXPECT_EQ(joint_->default_dry_friction(), kDryFriction);
+  EXPECT_EQ(joint_->default_dry_friction_vector(), Vector1d(kDryFriction));
+  EXPECT_THROW(mutable_joint_->set_default_dry_friction(-1), std::exception);
+
+  EXPECT_EQ(joint_->GetDryFriction(*context_), kDryFriction);
+  const double new_dry_friction = 2.0 * kDryFriction;
+  joint_->SetDryFriction(context_.get(), new_dry_friction);
+  EXPECT_EQ(joint_->GetDryFriction(*context_), new_dry_friction);
+  EXPECT_EQ(joint_->GetDryFrictionVector(*context_),
+            Vector1d(new_dry_friction));
+  EXPECT_THROW(joint_->SetDryFriction(context_.get(), -1), std::exception);
 }
 
 // Context-dependent value access.
